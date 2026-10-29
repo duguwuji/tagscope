@@ -6,7 +6,7 @@ Online: <https://tagscope.iotrfid.top>
 Source code: <https://github.com/duguwuji/tagscope>  
 中文版：[TagScope 用户手册](user-guide-zh.md)
 
-> **About UI labels.** The TagScope interface is currently in Chinese. In this guide every UI label is given in English, followed by the original Chinese text on first mention, e.g. **Inventory (盘点)**, so you can find it on screen.
+> **Interface language.** TagScope has an English and a Chinese interface. Switch with the **English / 中文** link at the bottom of the sidebar; by default the language follows your browser. Labels in this guide follow the English interface, with the Chinese label in parentheses on first mention, e.g. **Inventory (盘点)**.
 
 ---
 
@@ -121,6 +121,8 @@ As in ItemTest, the window has a left sidebar and a main area on the right.
 | Settings (设置) | Updates (更新), Tag Logging (标签日志), About (关于) | Version check, automatic logging, version and copyright information |
 
 **Log (日志)** at the bottom left opens the log drawer, which shows connection, configuration and error messages. Tick **Debug (调试)** for more detail, or clear the log.
+
+**English / 中文** at the bottom left switches the interface language. The page reloads; data sources, presets and settings are kept. Without a saved choice, the language follows the browser (Chinese for Chinese browsers, otherwise English).
 
 ---
 
@@ -524,7 +526,7 @@ All settings are stored in the browser's local storage, per site address: the on
 
 **Not implemented** in this version: Location and Direction displays (xArray / xSpan), Gen2X features, Truncated Reply, Protected Mode, filter verification, tag population estimation algorithm, XPC and Enhanced Integra reporting, GPI debounce, RDD / FDD, and tag event configuration for the IoT interface.
 
-**Additional in TagScope**: web version (no installation), built-in simulated reader, tag lock and kill, automatic tag model identification, automatic CSV log export after every run.
+**Additional in TagScope**: web version (no installation), Chinese / English interface, built-in simulated reader, tag lock and kill, automatic tag model identification, automatic CSV log export after every run.
 
 ### 13.3 File structure
 
@@ -532,6 +534,7 @@ All settings are stored in the browser's local storage, per site address: the on
 server.js              Bridge (HTTP, SSE, API)
 worker.js              Cloudflare Workers entry (online version)
 public/index.html      Web UI
+public/i18n.js         Interface language (Chinese / English)
 public/app.js          UI logic: backends, data sources, presets
 public/views.js        UI logic: displays, tag memory, logging, navigation
 public/sim.js          Simulated reader core (shared by browser and bridge)
