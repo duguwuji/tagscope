@@ -1,5 +1,7 @@
 # TagScope · RFID 标签观测台
 
+**中文** | [English](README.en.md)
+
 TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界面和工作流程参照 Impinj ItemTest 2.x。它可以连接真实读写器，也可以用模拟器演示。项目不依赖任何 npm 包，只需要 Node.js 18 或更高版本。
 
 ## 在线网页版
@@ -35,7 +37,7 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 3. 打开 <http://localhost:8080>
 4. 点击左侧“数据源 ⊕”添加读写器（填写 IP 或主机名并选择接口），然后在盘点页点击 ▶ 开始盘点。
 
-完整操作说明见 **[中文用户手册](docs/user-guide-zh.md)**。
+完整操作说明见 **[中文用户手册](docs/user-guide-zh.md)**（[English user guide](docs/user-guide-en.md)）。
 
 常用参数：`node server.js --port=8080 --host=0.0.0.0 --verbose`
 
@@ -83,6 +85,7 @@ public/views.js        界面逻辑：各展示页、标签存储、日志、导
 public/sim.js          模拟读写器核心（浏览器与桥接服务共用）
 public/tagdb.js        TID → 标签型号
 docs/user-guide-zh.md  中文用户手册
+docs/user-guide-en.md  英文用户手册
 lib/llrp-codec.js      LLRP 1.0.1 编解码，以及 Impinj 扩展
 lib/driver-llrp.js     LLRP 驱动
 lib/driver-rest.js     R700 IoT Device Interface 驱动

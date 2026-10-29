@@ -3,7 +3,8 @@
 适用版本：TagScope 2.0.0（网页版与桥接服务）  
 作者：Hill · <Hill@iotrfid.top>  
 在线版：<https://tagscope.iotrfid.top>  
-源代码：<https://github.com/duguwuji/tagscope>
+源代码：<https://github.com/duguwuji/tagscope>  
+English: [TagScope User Guide](user-guide-en.md)
 
 ---
 
@@ -538,6 +539,7 @@ lib/driver-llrp.js     LLRP 驱动
 lib/driver-rest.js     R700 IoT Device Interface 驱动
 lib/driver-sim.js      模拟器驱动
 docs/user-guide-zh.md  本手册
+docs/user-guide-en.md  英文版手册
 ```
 
 ---
