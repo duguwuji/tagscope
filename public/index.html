@@ -6,6 +6,7 @@
 <meta name="author" content="Hill <Hill@iotrfid.top>">
 <meta name="copyright" content="© 2026 Hill (Hill@iotrfid.top)">
 <title>TagScope</title>
+<script src="i18n.js?v=2.0.0"></script>
 <style>
 :root{--title:#2F5D8C;--navy:#1F4E79;--sel:#1E63A8;--teal:#1A9E9A;--tx:#1E1E1E;--mu:#6B6B6B;--bd:#C9CED6;--bd2:#E3E6EA;--bg:#fff;--pg:#F3F5F8;--err:#C62828;--ok:#2E7D32;--mono:Consolas,"Cascadia Mono",Menlo,"Courier New",monospace}
 *{box-sizing:border-box}[hidden]{display:none!important}
@@ -198,7 +199,7 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
     <button class="ni" data-nav="logging">标签日志</button>
     <button class="ni" data-nav="about">关于</button>
   </div>
-  <div class="side-foot"><button id="logBtn">日志</button> · <span id="bridgeTxt"></span><br>© 2026 Hill<br><a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a></div>
+  <div class="side-foot"><button id="logBtn">日志</button> · <span id="bridgeTxt"></span> · <button id="langBtn" data-noi18n>English</button><br>© 2026 Hill<br><a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a></div>
 </aside>
 <main>
   <div class="offline" id="offline" hidden></div>
@@ -407,7 +408,7 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
     <div class="logo"><svg class="dots" width="68" height="28" viewBox="0 0 34 14" aria-hidden="true"><g fill="#E0303A"><circle cx="17" cy="2" r="1.6"/><circle cx="11" cy="4" r="1.3"/><circle cx="23" cy="4" r="1.3"/><circle cx="6.5" cy="7.5" r="1.1"/><circle cx="27.5" cy="7.5" r="1.1"/><circle cx="14" cy="7" r="1.1"/><circle cx="20" cy="7" r="1.1"/><circle cx="3.5" cy="12" r=".9"/><circle cx="30.5" cy="12" r=".9"/><circle cx="17" cy="9" r="1"/></g></svg><b>TAGSCOPE</b></div>
     <p>版本 <span id="ab-ver"></span> · 桥接服务 <span id="ab-br">—</span></p>
     <p>面向 RFID 工程师的 UHF RFID 读写器测试工具：盘点、余量测试、标签存储读写、Gen2 过滤、GPI/GPO，支持 Impinj LLRP、R700 IoT 接口和模拟器。</p>
-    <p><a class="btn pri" href="https://github.com/duguwuji/tagscope/blob/main/docs/user-guide-zh.md" target="_blank" rel="noopener">打开用户指南</a> <a class="btn" href="https://github.com/duguwuji/tagscope/blob/main/docs/user-guide-en.md" target="_blank" rel="noopener">User Guide (English)</a></p>
+    <p><a class="btn pri" id="guide1" data-noi18n href="https://github.com/duguwuji/tagscope/blob/main/docs/user-guide-zh.md" target="_blank" rel="noopener">打开用户指南</a> <a class="btn" id="guide2" data-noi18n href="https://github.com/duguwuji/tagscope/blob/main/docs/user-guide-en.md" target="_blank" rel="noopener">User Guide (English)</a></p>
     <p style="font-size:11.5px;color:#888">© 2026 Hill · <a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a><br>Impinj、ItemTest、Octane、FastID、TagFocus 是 Impinj, Inc. 的商标；TagScope 为独立项目，与 Impinj 无关联。</p>
   </div></div></section>
 
