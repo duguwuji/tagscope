@@ -4,7 +4,7 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 
 ## 在线网页版
 
-地址：**https://tagscope.iotrfid.top**（部署在 Cloudflare Workers）
+地址：**[https://tagscope.iotrfid.top](https://tagscope.iotrfid.top)**（部署在 Cloudflare Workers）
 
 - **只体验界面**：添加数据源时选择“模拟器”，模拟器直接在浏览器中运行，不需要安装任何东西。
 - **连接真实读写器**：在与读写器同一局域网的电脑上运行 `node server.js`，然后在网页版添加 LLRP 或 IoT 接口数据源，“桥接服务地址”填 `http://localhost:8080`（默认值）。
@@ -18,7 +18,7 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 
 浏览器不能直接建立 TCP 连接，所以无法访问读写器的 LLRP 端口（5084）。`server.js` 是一个很小的本地桥接服务，作用如下：
 
-- 提供网页界面（http://localhost:8080）
+- 提供网页界面（<http://localhost:8080>）
 - 使用 LLRP（TCP）或 R700 REST（HTTPS）与读写器通信
 - 用 Server-Sent Events 把标签数据实时推送到网页
 
@@ -28,11 +28,11 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 
 ## 快速开始
 
-1. 安装 Node.js 18 或更高版本（https://nodejs.org）。
+1. 安装 Node.js 18 或更高版本（<https://nodejs.org>）。
 2. 启动服务：
    - Windows：双击 `start-windows.bat`
    - macOS / Linux：运行 `./start.sh`，或者 `node server.js`
-3. 打开 http://localhost:8080
+3. 打开 <http://localhost:8080>
 4. 选择驱动，输入读写器 IP 或主机名，然后点击“连接”，再点击“开始盘点”。
 
 常用参数：`node server.js --port=8080 --host=0.0.0.0 --verbose`
