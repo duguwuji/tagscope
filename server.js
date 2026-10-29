@@ -12,6 +12,20 @@ const args = Object.fromEntries(process.argv.slice(2).map(a => a.replace(/^--/, 
 const PORT = +(args.port || process.env.PORT || 8080);
 const HOST = args.host || process.env.HOST || '127.0.0.1';
 const INDEX = path.join(__dirname, 'public', 'index.html');
+const APPJS = path.join(__dirname, 'public', 'app.js');
+// Web pages allowed to use this bridge from another origin (the hosted TagScope page + local pages).
+const ALLOW = new Set(['https://tagscope.hillleng2478.workers.dev', ...String(args['allow-origin'] || process.env.TAGSCOPE_ALLOW_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean)]);
+function originOk(req) {
+  const o = req.headers.origin; if (!o) return true;
+  if (o === `http://${req.headers.host}` || ALLOW.has(o)) return true;
+  try { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(o).hostname); } catch (_) { return false; }
+}
+function cors(req, res) {
+  const o = req.headers.origin; if (!o || !originOk(req)) return;
+  res.setHeader('Access-Control-Allow-Origin', o); res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true'); res.setHeader('Access-Control-Max-Age', '600');
+}
 
 let driver = null, info = null, connected = false, running = false, runTimer = null, startedAt = 0, lastCfg = null, busy = false;
 const clients = new Set();
@@ -81,7 +95,13 @@ const routes = {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (url.pathname.startsWith('/api/')) {
+    if (!originOk(req)) { res.writeHead(403, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: `来源 ${req.headers.origin} 未被允许，可用 --allow-origin 添加` })); }
+    cors(req, res);
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+  }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return fs.createReadStream(INDEX).pipe(res); }
+  if (req.method === 'GET' && url.pathname === '/app.js') { res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' }); return fs.createReadStream(APPJS).pipe(res); }
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write(`event: state\ndata: ${JSON.stringify(state())}\n\n`); clients.add(res);
@@ -96,5 +116,5 @@ const server = http.createServer(async (req, res) => {
     catch (e) { log('error', e.message); res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
   });
 });
-server.listen(PORT, HOST, () => { console.log('TagScope 1.1.0  © 2026 Hill · Hill@iotrfid.top'); console.log(`TagScope 已启动： http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`); });
+server.listen(PORT, HOST, () => { console.log('TagScope 1.2.0  © 2026 Hill · Hill@iotrfid.top'); console.log(`TagScope 已启动： http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`); console.log('网页版：https://tagscope.hillleng2478.workers.dev （连接真实读写器时保持本窗口运行）'); });
 process.on('SIGINT', async () => { await doDisconnect().catch(() => { }); process.exit(0); });

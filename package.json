@@ -1,6 +1,6 @@
 {
   "name": "tagscope",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "TagScope - web-based RFID tag observation and reader test tool with LLRP, R700 REST and simulator drivers",
   "main": "server.js",
   "scripts": {

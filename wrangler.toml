@@ -1,0 +1,10 @@
+# Deploy the TagScope web UI to Cloudflare Workers:  npx wrangler deploy
+name = "tagscope"
+main = "worker.js"
+compatibility_date = "2025-10-01"
+workers_dev = true
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "public/*.js"]
+fallthrough = true
