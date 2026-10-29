@@ -12,7 +12,7 @@ const args = Object.fromEntries(process.argv.slice(2).map(a => a.replace(/^--/, 
 const PORT = +(args.port || process.env.PORT || 8080);
 const HOST = args.host || process.env.HOST || '127.0.0.1';
 const INDEX = path.join(__dirname, 'public', 'index.html');
-const APPJS = path.join(__dirname, 'public', 'app.js');
+const STATIC = { '/app.js': 'app.js', '/sim.js': 'sim.js', '/tagdb.js': 'tagdb.js', '/views.js': 'views.js' };
 // Web pages allowed to use this bridge from another origin (the hosted TagScope page + local pages).
 const ALLOW = new Set(['https://tagscope.iotrfid.top', ...String(args['allow-origin'] || process.env.TAGSCOPE_ALLOW_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean)]);
 function originOk(req) {
@@ -27,69 +27,83 @@ function cors(req, res) {
   res.setHeader('Access-Control-Allow-Private-Network', 'true'); res.setHeader('Access-Control-Max-Age', '600');
 }
 
-let driver = null, info = null, connected = false, running = false, runTimer = null, startedAt = 0, lastCfg = null, busy = false;
+const VERSION = require('./package.json').version;
+const sources = new Map(); // id -> { id, driver, info, connected, running, startedAt, cfg, busy, batch, batchReads }
 const clients = new Set();
-let batch = new Map(), batchReads = 0;
 
 function send(event, data) { const s = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const c of clients) c.write(s); }
-function log(level, msg) { if (level === 'debug' && !args.verbose) { send('log', { level, msg, ts: Date.now() }); return; } console.log(`[${level}] ${msg}`); send('log', { level, msg, ts: Date.now() }); }
-function state() { return { connected, running, info, startedAt, driver: driver?.kind || null, cfg: lastCfg }; }
-function pushState() { send('state', state()); }
+function log(level, msg, id) { if (level !== 'debug' || args.verbose) console.log(`[${level}]${id ? ' [' + id + ']' : ''} ${msg}`); send('log', { level, msg, ts: Date.now(), id }); }
+function srcState(x) { return { id: x.id, connected: x.connected, running: x.running, info: x.info, startedAt: x.startedAt, driver: x.driver?.kind || x.kind || null }; }
+function state() { return { version: VERSION, sources: Object.fromEntries([...sources.values()].map(x => [x.id, srcState(x)])) }; }
+function pushState(x) { send('state', srcState(x)); }
+function get(id) { const x = sources.get(String(id || '')); if (!x) throw new Error('数据源未连接'); return x; }
 
 setInterval(() => {
-  if (!batch.size) return;
-  const reads = [...batch.values()]; batch = new Map();
-  send('tags', { reads, total: batchReads, ts: Date.now() }); batchReads = 0;
+  for (const x of sources.values()) {
+    if (!x.batch.size) continue;
+    const reads = [...x.batch.values()]; x.batch = new Map();
+    send('tags', { id: x.id, reads, total: x.batchReads, ts: Date.now() }); x.batchReads = 0;
+  }
 }, 200);
 
-function onTag(t) {
-  batchReads += t.count || 1;
-  const k = t.epc + '|' + t.antenna, b = batch.get(k);
-  const hasR = typeof t.rssi === 'number';
-  if (!b) batch.set(k, { ...t, count: t.count || 1, maxRssi: t.rssi, minRssi: t.rssi, rssiSum: hasR ? t.rssi : 0, rssiN: hasR ? 1 : 0, firstTs: t.ts });
-  else { b.count += t.count || 1; b.rssi = t.rssi ?? b.rssi; if (hasR) { b.rssiSum += t.rssi; b.rssiN++; } b.maxRssi = Math.max(b.maxRssi ?? -999, t.rssi ?? -999); b.minRssi = Math.min(b.minRssi ?? 999, t.rssi ?? 999); b.phase = t.phase ?? b.phase; b.doppler = t.doppler ?? b.doppler; b.channel = t.channel ?? b.channel; b.freq = t.freq ?? b.freq; b.tid = t.tid || b.tid; b.pc = t.pc || b.pc; b.ts = t.ts; }
+function onTag(x, t) {
+  x.batchReads += t.count || 1;
+  const k = t.epc + '|' + t.antenna, b = x.batch.get(k), hasR = typeof t.rssi === 'number';
+  if (!b) x.batch.set(k, { ...t, count: t.count || 1, maxRssi: t.rssi, minRssi: t.rssi, rssiSum: hasR ? t.rssi : 0, rssiN: hasR ? 1 : 0, firstTs: t.ts });
+  else {
+    b.count += t.count || 1; b.rssi = t.rssi ?? b.rssi; if (hasR) { b.rssiSum += t.rssi; b.rssiN++; }
+    b.maxRssi = Math.max(b.maxRssi ?? -999, t.rssi ?? -999); b.minRssi = Math.min(b.minRssi ?? 999, t.rssi ?? 999);
+    for (const f of ['phase', 'doppler', 'channel', 'freq', 'tid', 'pc', 'xpc', 'rts', 'power']) if (t[f] != null) b[f] = t[f];
+    b.ts = t.ts;
+  }
 }
 
 async function doConnect(o) {
-  if (connected) await doDisconnect();
+  const id = String(o.id || 'default');
+  if (sources.has(id)) await doDisconnect(id);
   const d = o.driver === 'rest' ? new RestDriver() : o.driver === 'sim' ? new SimDriver() : new LlrpDriver();
-  d.on('log', log); d.on('tag', onTag);
-  d.on('disconnected', () => { if (driver === d) { driver = null; info = null; connected = false; running = false; clearTimeout(runTimer); log('warn', '与读写器的连接已断开'); pushState(); } });
-  log('info', `正在连接 ${o.driver === 'sim' ? '模拟器' : `${o.host}`}（${d.kind.toUpperCase()}）…`);
-  driver = d;
-  try { info = await d.connect(o); } catch (e) { driver = null; try { d.sock?.destroy(); } catch (_) { } throw e; }
-  connected = true; log('info', `已连接：${info.model} · 固件 ${info.firmware || '未知'}`); pushState();
+  const x = { id, kind: d.kind, driver: d, info: null, connected: false, running: false, startedAt: 0, cfg: null, busy: false, batch: new Map(), batchReads: 0 };
+  d.on('log', (lv, m) => log(lv, m, id)); d.on('tag', t => onTag(x, t));
+  d.on('rospec', ev => { send('rospec', { id, ev, ts: Date.now() }); });
+  d.on('gpi', g => send('gpi', { id, ...g, ts: Date.now() }));
+  d.on('disconnected', () => { if (sources.get(id) === x) { sources.delete(id); x.connected = false; x.running = false; log('warn', '与读写器的连接已断开', id); pushState(x); } });
+  log('info', `正在连接 ${o.driver === 'sim' ? '模拟器' : o.host}（${d.kind.toUpperCase()}）…`, id);
+  sources.set(id, x);
+  try { x.info = await d.connect(o); } catch (e) { sources.delete(id); try { d.sock?.destroy(); } catch (_) { } throw e; }
+  x.connected = true; log('info', `已连接：${x.info.model} · 固件 ${x.info.firmware || '未知'}`, id); pushState(x);
+  return srcState(x);
 }
-async function doDisconnect() {
-  if (!driver) return; const d = driver; clearTimeout(runTimer);
-  try { await d.disconnect(); } catch (e) { log('warn', e.message); }
-  driver = null; info = null; connected = false; running = false; log('info', '已断开连接'); pushState();
+async function doDisconnect(id) {
+  const x = sources.get(String(id)); if (!x) return { id, connected: false };
+  sources.delete(x.id);
+  try { await x.driver.disconnect(); } catch (e) { log('warn', e.message, x.id); }
+  x.connected = false; x.running = false; log('info', '已断开连接', x.id); pushState(x);
+  return srcState(x);
 }
-async function doStart(cfg) {
-  if (!connected) throw new Error('未连接读写器');
-  lastCfg = cfg; if (running) await driver.stop();
-  await driver.start(cfg); running = true; startedAt = Date.now();
-  log('info', `开始盘点：模式 ${cfg.mode}，Session ${cfg.session}，天线 ${cfg.antennas.filter(a => a.enabled).map(a => a.id).join(',')}`);
-  clearTimeout(runTimer);
-  if (+cfg.duration > 0) runTimer = setTimeout(() => doStop().catch(e => log('error', e.message)), +cfg.duration * 1000);
-  pushState();
+async function doStart(id, cfg) {
+  const x = get(id); x.cfg = cfg;
+  if (x.running) await x.driver.stop();
+  await x.driver.start(cfg); x.running = true; x.startedAt = Date.now();
+  log(cfg.quiet ? 'debug' : 'info', `开始盘点：RF 模式 ${cfg.mode}，Session ${cfg.session}，搜索模式 ${cfg.searchMode}，天线 ${cfg.antennas.filter(a => a.enabled).map(a => a.id).join(',')}`, id);
+  pushState(x); return srcState(x);
 }
-async function doStop() { clearTimeout(runTimer); if (driver && running) { running = false; await driver.stop(); log('info', '盘点已停止'); } running = false; pushState(); }
+async function doStop(id) { const x = get(id); if (x.running) { x.running = false; await x.driver.stop(); log('debug', '盘点已停止', id); } x.running = false; pushState(x); return srcState(x); }
 
 const routes = {
   'GET /api/state': async () => state(),
-  'POST /api/connect': async b => { await doConnect(b); return state(); },
-  'POST /api/disconnect': async () => { await doDisconnect(); return state(); },
-  'POST /api/start': async b => { await doStart(b); return state(); },
-  'POST /api/stop': async () => { await doStop(); return state(); },
-  'POST /api/config': async b => { lastCfg = b; if (driver) driver.cfg = b; if (running) await doStart(b); return state(); },
+  'POST /api/connect': async b => doConnect(b),
+  'POST /api/disconnect': async b => doDisconnect(b.id),
+  'POST /api/start': async b => doStart(b.id, b.cfg),
+  'POST /api/stop': async b => doStop(b.id),
+  'POST /api/gpo': async b => { const x = get(b.id); if (!x.driver.gpo) throw new Error('该数据源不支持 GPO 控制'); return x.driver.gpo(b.port, b.state); },
+  'POST /api/gpi': async b => { const x = get(b.id); if (!x.driver.gpi) throw new Error('仅模拟器支持模拟 GPI 输入'); return x.driver.gpi(b.port, b.level); },
   'POST /api/access': async b => {
-    if (!connected) throw new Error('未连接读写器');
-    if (!info.supportsAccess) throw new Error('当前驱动不支持标签操作');
-    if (busy) throw new Error('上一个标签操作尚未完成');
-    if (!driver.cfg && lastCfg) driver.cfg = lastCfg;
-    busy = true; log('info', `标签操作 ${b.op} → ${b.targetEpc || '任意标签'}`);
-    try { const r = await driver.accessOp(b); log(r.ok ? 'info' : 'warn', `标签操作 ${b.op}：${r.message}${r.data ? ' 数据 ' + r.data : ''}`); return r; } finally { busy = false; }
+    const x = get(b.id);
+    if (!x.info.supportsAccess) throw new Error('当前驱动不支持标签操作');
+    if (x.busy) throw new Error('上一个标签操作尚未完成');
+    if (!x.driver.cfg && b.cfg) x.driver.cfg = b.cfg;
+    x.busy = true; log('info', `标签操作 ${b.op} → ${b.targetTid ? 'TID ' + b.targetTid : b.targetEpc || '任意标签'}`, x.id);
+    try { const r = await x.driver.accessOp(b); log(r.ok ? 'info' : 'warn', `标签操作 ${b.op}：${r.message}${r.data ? ' 数据 ' + r.data : ''}`, x.id); return r; } finally { x.busy = false; }
   },
 };
 
@@ -101,10 +115,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return fs.createReadStream(INDEX).pipe(res); }
-  if (req.method === 'GET' && url.pathname === '/app.js') { res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' }); return fs.createReadStream(APPJS).pipe(res); }
+  if (url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
+  if (req.method === 'GET' && STATIC[url.pathname]) { res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' }); return fs.createReadStream(path.join(__dirname, 'public', STATIC[url.pathname])).pipe(res); }
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    res.write(`event: state\ndata: ${JSON.stringify(state())}\n\n`); clients.add(res);
+    res.write(`event: hello\ndata: ${JSON.stringify(state())}\n\n`); clients.add(res);
     const ka = setInterval(() => res.write(': ping\n\n'), 15000);
     req.on('close', () => { clearInterval(ka); clients.delete(res); }); return;
   }
@@ -116,5 +131,5 @@ const server = http.createServer(async (req, res) => {
     catch (e) { log('error', e.message); res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
   });
 });
-server.listen(PORT, HOST, () => { console.log('TagScope 1.2.0  © 2026 Hill · Hill@iotrfid.top'); console.log(`TagScope 已启动： http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`); console.log('网页版：https://tagscope.iotrfid.top （连接真实读写器时保持本窗口运行）'); });
-process.on('SIGINT', async () => { await doDisconnect().catch(() => { }); process.exit(0); });
+server.listen(PORT, HOST, () => { console.log(`TagScope ${VERSION}  © 2026 Hill · Hill@iotrfid.top`); console.log(`TagScope 已启动： http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`); console.log('网页版：https://tagscope.iotrfid.top （连接真实读写器时保持本窗口运行）'); });
+process.on('SIGINT', async () => { await Promise.all([...sources.keys()].map(id => doDisconnect(id).catch(() => { }))); process.exit(0); });
