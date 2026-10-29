@@ -120,6 +120,8 @@ node server.js --port=8080 --host=127.0.0.1 --verbose --allow-origin=https://exa
 
 左下角“日志”打开日志抽屉，显示连接、配置、错误等运行信息。抽屉中可勾选“调试”显示更详细的信息，也可以清空日志。
 
+左下角“English / 中文”切换界面语言，页面会重新加载，数据源、预设和设置都会保留。没有手动选择过时，界面语言跟随浏览器（中文浏览器显示中文，其他显示英文）。
+
 ---
 
 ## 4. 数据源
@@ -522,7 +524,7 @@ Timestamp,EPC,TID,Antenna,RSSI,Frequency,Hostname,PhaseAngle,DopplerFrequency,Po
 
 当前版本**未实现**：定位展示与方向展示（xArray / xSpan）、Gen2X 功能、截断回复（Truncated Reply）、保护模式（Protected Mode）、过滤器校验、标签数量估算算法、XPC 与 Enhanced Integra 上报、GPI 去抖、RDD / FDD、IoT 接口的标签事件配置。
 
-TagScope **额外提供**：网页版（无需安装）、内置模拟读写器、标签锁定与灭活、标签型号自动识别、每次运行自动导出 CSV 日志。
+TagScope **额外提供**：网页版（无需安装）、中英文界面、内置模拟读写器、标签锁定与灭活、标签型号自动识别、每次运行自动导出 CSV 日志。
 
 ### 13.3 文件结构
 
@@ -530,6 +532,7 @@ TagScope **额外提供**：网页版（无需安装）、内置模拟读写器�
 server.js              桥接服务（HTTP、SSE、API）
 worker.js              Cloudflare Workers 入口（在线版）
 public/index.html      网页界面
+public/i18n.js         界面语言（中文 / 英文）
 public/app.js          界面逻辑：后端、数据源、预设
 public/views.js        界面逻辑：各展示页、标签存储、日志、导航
 public/sim.js          模拟读写器核心（浏览器与桥接服务共用）
