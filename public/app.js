@@ -1,332 +1,383 @@
+// TagScope — Copyright © 2026 Hill (Hill@iotrfid.top). All rights reserved.
 'use strict';
-/* TagScope — © 2026 Hill (Hill@iotrfid.top) */
+const VERSION = '2.0.0';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const fmt = n => Number(n).toLocaleString('zh-CN');
-const tstr = ts => ts ? new Date(ts).toLocaleTimeString('zh-CN',{hour12:false})+'.'+String(ts%1000).padStart(3,'0') : '';
-const DEFAULT_MODES=[[0,'Max Throughput'],[1,'Hybrid'],[2,'Dense Reader M4'],[3,'Dense Reader M8'],[4,'MaxMiller'],[1000,'AutoSet Dense Reader'],[1002,'AutoSet Static'],[1003,'AutoSet Static Fast'],[1004,'AutoSet Static DRM']].map(([id,n])=>({id,label:`${id} · ${n}`}));
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),5000);}
-// ---------- backends: bridge (node server.js) or in-browser simulator ----------
-const CLOUD = !!window.TAGSCOPE_CLOUD || location.protocol==='file:';
-const normUrl = u => { u=String(u||'').trim().replace(/\/+$/,''); if(u&&!/^https?:\/\//i.test(u)) u='http://'+u; return u; };
-let bridgeUrl = (()=>{ try{ return normUrl(JSON.parse(localStorage.getItem('tagscope.bridge'))); }catch(_){ return ''; } })() || 'http://localhost:8080';
-let backend = null;
-const handlers = { state: s=>applyState(s), log: l=>addLog(l), tags: b=>ingest(b) };
-function api(p,b){ return backend.api(p,b); }
-function showOffline(){ const o=$('#offline'); o.innerHTML = CLOUD
-  ? `未连接到 TagScope 桥接服务（<span class="mono">${esc(backend.base)}</span>）。请在本机运行 <b>node server.js</b> 并保持窗口打开；如浏览器询问是否允许访问本地网络 / 本设备上的应用，请选择“允许”。仅体验界面可把数据源改为“模拟器”。`
-  : '未检测到 TagScope 桥接服务。请在本机运行 <b>node server.js</b>，然后打开 http://localhost:8080 。'; o.hidden=false; }
-// Chrome Local Network Access: a public https page needs targetAddressSpace to reach http:// LAN hosts.
-function addrSpace(base){ try{ const h=new URL(base).hostname.replace(/^\[|\]$/g,''); if(!base||h==='localhost'||/^127\./.test(h)||h==='::1') return null;
-  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|f[cd]|fe80:)/i.test(h)||/\.local$/i.test(h)?'local':null; }catch(_){ return null; } }
-async function xfetch(url,opt,space){ if(space&&location.protocol==='https:'){ try{ return await fetch(url,{...opt,targetAddressSpace:space}); }catch(e){ if(!/targetAddressSpace|enum/i.test(e.message)) throw e; } } return fetch(url,opt); }
-function makeBridge(base){
-  const me={kind:'bridge',base,closed:false,ctl:null}, space=CLOUD?addrSpace(base):null;
-  const emit=(ev,d)=>{ if(!me.closed&&backend===me) handlers[ev](d); };
-  me.api=async(p,b)=>{ let r;
-    try{ r=await xfetch(base+'/api/'+p,{method:b===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},body:b===undefined?undefined:JSON.stringify(b)},space); }
-    catch(e){ throw new Error(`无法连接桥接服务 ${base||location.origin}，请确认已在本机运行 node server.js`); }
-    const j=await r.json().catch(()=>({error:r.status+' '+r.statusText})); if(!r.ok) throw new Error(j.error||r.statusText); return j; };
-  // Server-sent events read over fetch (works cross-origin and with targetAddressSpace); auto-reconnects.
-  const lost=()=>{ if(!me.closed&&backend===me){ showOffline(); if(S.connected) handlers.state({connected:false,running:false,info:null}); } };
-  me.open=async()=>{ while(!me.closed){ me.ctl=new AbortController();
-    try{ const r=await xfetch(base+'/api/events',{headers:{Accept:'text/event-stream'},cache:'no-store',signal:me.ctl.signal},space); if(!r.ok||!r.body) throw new Error(r.status);
-      const rd=r.body.pipeThrough(new TextDecoderStream()).getReader(); let buf='';
-      for(;;){ const {value,done}=await rd.read(); if(done) break; buf+=value; let i;
-        while((i=buf.indexOf('\n\n'))>=0){ const blk=buf.slice(0,i); buf=buf.slice(i+2); let ev='message',data='';
-          for(const ln of blk.split('\n')){ if(ln.startsWith('event:')) ev=ln.slice(6).trim(); else if(ln.startsWith('data:')) data+=ln.slice(5).trim(); }
-          if(!data||!handlers[ev]) continue; if(ev==='state'&&backend===me) $('#offline').hidden=true; emit(ev,JSON.parse(data)); } } }
-    catch(e){ if(me.closed) return; }
-    lost(); await new Promise(r=>setTimeout(r,3000)); } };
-  me.close=()=>{ me.closed=true; me.ctl&&me.ctl.abort(); };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clean = s => String(s || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const fix = (v, d = 3) => v == null || v === '' || isNaN(v) ? '' : Number(v).toFixed(d);
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 5000); }
+const store = { get(k, d) { try { const v = localStorage.getItem('tagscope.' + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem('tagscope.' + k, JSON.stringify(v)); } catch (_) { } } };
+const CLOUD = !!window.TAGSCOPE_CLOUD || location.protocol === 'file:';
+const normUrl = u => { u = String(u || '').trim().replace(/\/+$/, ''); if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u; return u; };
+let bridgeUrl = normUrl(store.get('bridge', '')) || 'http://localhost:8080';
+const hex2b64 = h => { h = clean(h); if (!h) return ''; let s = ''; for (let i = 0; i + 1 < h.length; i += 2) s += String.fromCharCode(parseInt(h.substr(i, 2), 16)); return btoa(s); };
+function dl(name, text, type = 'text/csv') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([type === 'text/csv' ? '\ufeff' + text : text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+const stamp = (d = new Date()) => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
+const clockStr = ms => { ms = Math.max(0, Math.floor(ms)); const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms % 1000).padStart(3, '0')}`; };
+function beep() { try { const c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 1760; g.gain.value = .08; o.connect(g); g.connect(c.destination); o.start(); setTimeout(() => { o.stop(); c.close(); }, 160); } catch (_) { } }
+
+/* =====================================================================
+   Backends: bridge (node server.js, multi-source) and in-browser simulator
+   ===================================================================== */
+const handlers = {};
+function addrSpace(base) { try { const h = new URL(base).hostname.replace(/^\[|\]$/g, ''); if (!base || h === 'localhost' || /^127\./.test(h) || h === '::1') return null;
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|f[cd]|fe80:)/i.test(h) || /\.local$/i.test(h) ? 'local' : null; } catch (_) { return null; } }
+async function xfetch(url, opt, space) { if (space && location.protocol === 'https:') { try { return await fetch(url, { ...opt, targetAddressSpace: space }); } catch (e) { if (!/targetAddressSpace|enum/i.test(e.message)) throw e; } } return fetch(url, opt); }
+const backends = new Map();
+function makeBridge(base) {
+  const me = { kind: 'bridge', base, online: null, version: null, closed: false, ctl: null }, space = CLOUD ? addrSpace(base) : null;
+  me.api = async (p, b) => { let r;
+    try { r = await xfetch(base + '/api/' + p, { method: b === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, body: b === undefined ? undefined : JSON.stringify(b) }, space); }
+    catch (e) { setOnline(me, false); throw new Error(`无法连接桥接服务 ${base || location.origin}，请确认已运行 node server.js`); }
+    const j = await r.json().catch(() => ({ error: r.status + ' ' + r.statusText })); if (!r.ok) throw new Error(j.error || r.statusText); return j; };
+  me.open = async () => { while (!me.closed) { me.ctl = new AbortController();
+    try { const r = await xfetch(base + '/api/events', { headers: { Accept: 'text/event-stream' }, cache: 'no-store', signal: me.ctl.signal }, space); if (!r.ok || !r.body) throw new Error(r.status);
+      const rd = r.body.pipeThrough(new TextDecoderStream()).getReader(); let buf = '';
+      for (;;) { const { value, done } = await rd.read(); if (done) break; buf += value; let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) { const blk = buf.slice(0, i); buf = buf.slice(i + 2); let ev = 'message', data = '';
+          for (const ln of blk.split('\n')) { if (ln.startsWith('event:')) ev = ln.slice(6).trim(); else if (ln.startsWith('data:')) data += ln.slice(5).trim(); }
+          if (!data || !handlers[ev]) continue; const d = JSON.parse(data); if (ev === 'hello') { me.version = d.version || '1.x'; setOnline(me, true); } handlers[ev](d, me); } } }
+    catch (e) { if (me.closed) return; }
+    setOnline(me, false); await sleep(3000); } };
+  me.close = () => { me.closed = true; me.ctl && me.ctl.abort(); };
+  me.open();
   return me;
 }
-function makeLocal(){
-  const rnd=(a,b)=>a+Math.random()*(b-a), hex=n=>Array.from({length:n},()=>'0123456789ABCDEF'[Math.random()*16|0]).join('');
-  const me={kind:'local',base:'',closed:false};
-  let db=[], info=null, connected=false, running=false, timer=null, runTimer=null, startedAt=0, lastCfg=null, batch=new Map(), batchReads=0, abusy=false;
-  const emit=(ev,d)=>{ if(!me.closed&&backend===me) handlers[ev](d); };
-  const log=(level,msg)=>emit('log',{level,msg,ts:Date.now()});
-  const state=()=>({connected,running,info,startedAt,driver:connected?'sim':null,cfg:lastCfg});
-  const push=()=>emit('state',state());
-  const flush=setInterval(()=>{ if(!batch.size) return; const reads=[...batch.values()]; batch=new Map(); emit('tags',{reads,total:batchReads,ts:Date.now()}); batchReads=0; },200);
-  function onTag(t){ batchReads++; const k=t.epc+'|'+t.antenna, b=batch.get(k);
-    if(!b) batch.set(k,{...t,count:1,maxRssi:t.rssi,minRssi:t.rssi,rssiSum:t.rssi,rssiN:1,firstTs:t.ts});
-    else { b.count++; b.rssi=t.rssi; b.rssiSum+=t.rssi; b.rssiN++; b.maxRssi=Math.max(b.maxRssi,t.rssi); b.minRssi=Math.min(b.minRssi,t.rssi); b.phase=t.phase; b.doppler=t.doppler??b.doppler; b.channel=t.channel; b.freq=t.freq; b.tid=t.tid||b.tid; b.pc=t.pc; b.ts=t.ts; } }
-  function simStart(c){ const ants=c.antennas.filter(a=>a.enabled); if(!ants.length) throw new Error('请至少启用一个天线');
-    const rate={0:1100,1:800,2:450,3:300,4:600,1000:700,1002:900}[+c.mode]||600; clearInterval(timer);
-    timer=setInterval(()=>{ const n=Math.round(rate/20*rnd(0.7,1.3));
-      for(let i=0;i<n;i++){ const a=ants[Math.random()*ants.length|0], t=db[Math.random()*db.length|0]; if(t.killed) continue;
-        const rssi=t.base+(a.txDbm-30)*0.9-(t.ant===a.id?0:rnd(4,14))+rnd(-2,2); if(rssi<(+a.rxDbm||-80)) continue;
-        if(c.filter?.enabled&&c.filter.mask&&c.filter.bank==='epc'){ const m=c.filter.mask.replace(/\s/g,'').toUpperCase(), off=Math.max(0,(+c.filter.pointer-32)/4), hit=t.epc.substr(off,m.length)===m; if(hit===(c.filter.action==='exclude')) continue; }
-        t.angle=(t.angle+rnd(-6,6)+360)%360; const ch=1+(Math.random()*50|0);
-        onTag({epc:t.epc,tid:c.fastId?t.tid:undefined,antenna:a.id,rssi:Math.round(rssi*2)/2,phase:+t.angle.toFixed(1),doppler:c.doppler?+rnd(-3,3).toFixed(2):undefined,channel:ch,freq:902.75+(ch-1)*0.5,pc:t.pc,count:1,ts:Date.now()}); } },50); }
-  async function start(c){ if(!connected) throw new Error('未连接读写器'); lastCfg=c; simStart(c); running=true; startedAt=Date.now();
-    log('info',`开始盘点：模式 ${c.mode}，Session ${c.session}，天线 ${c.antennas.filter(a=>a.enabled).map(a=>a.id).join(',')}`);
-    clearTimeout(runTimer); if(+c.duration>0) runTimer=setTimeout(()=>stop(),+c.duration*1000); push(); }
-  async function stop(){ clearTimeout(runTimer); clearInterval(timer); if(running){ running=false; log('info','盘点已停止'); } push(); }
-  async function access(r){ if(!connected) throw new Error('未连接读写器'); if(abusy) throw new Error('上一个标签操作尚未完成'); abusy=true; log('info',`标签操作 ${r.op} → ${r.targetEpc||'任意标签'}`);
-    try{ await new Promise(res=>setTimeout(res,150)); const tg=(r.targetEpc||'').replace(/\s/g,'').toUpperCase(), t=tg?db.find(x=>x.epc===tg&&!x.killed):db[0]; let o;
-      if(!t) o={ok:false,op:r.op,message:'超时（未找到目标标签）'};
-      else if(r.op==='read'){ const m=r.bank==='epc'?'0000'+t.pc+t.epc:r.bank==='tid'?t.tid:r.bank==='user'?t.user:t.reserved, p=(+r.wordPointer||0)*4, c=(+r.wordCount||(m.length/4-(+r.wordPointer||0)))*4; o=p+c>m.length?{ok:false,op:'read',result:4,message:'存储区越界'}:{ok:true,op:'read',epc:t.epc,message:'成功',data:m.substr(p,c)}; }
-      else if(r.op==='write'){ const d=(r.data||'').replace(/\s/g,'').toUpperCase(), p=(+r.wordPointer||0)*4;
-        if(r.bank==='tid') o={ok:false,op:'write',result:2,message:'存储区已锁定'};
-        else { if(r.bank==='user') t.user=(t.user.slice(0,p)+d+t.user.slice(p+d.length)).slice(0,128); else if(r.bank==='reserved') t.reserved=(t.reserved.slice(0,p)+d+t.reserved.slice(p+d.length)).slice(0,16); o={ok:true,op:'write',epc:t.epc,message:'成功',words:d.length/4}; } }
-      else if(r.op==='writeEpc'){ const d=(r.data||'').replace(/\s/g,'').toUpperCase(); t.epc=d; t.pc=(((d.length/4)<<11)|0).toString(16).padStart(4,'0').toUpperCase(); o={ok:true,op:'write',epc:d,message:'成功',words:d.length/4}; }
-      else if(r.op==='lock') o={ok:true,op:'lock',epc:t.epc,message:'成功'};
-      else if(r.op==='kill'){ if(!parseInt(r.password||'0',16)) o={ok:false,op:'kill',result:1,message:'灭活密码为 0'}; else { t.killed=true; o={ok:true,op:'kill',epc:t.epc,message:'成功'}; } }
-      else throw new Error('未知操作');
-      log(o.ok?'info':'warn',`标签操作 ${r.op}：${o.message}${o.data?' 数据 '+o.data:''}`); return o; } finally{ abusy=false; } }
-  const routes={
-    state:async()=>state(),
-    connect:async o=>{ if(o.driver!=='sim') throw new Error('连接真实读写器需要本机桥接服务（node server.js）');
-      db=Array.from({length:Math.max(1,Math.min(2000,+o.simTags||40))},(_,i)=>({epc:'E28011700000'+hex(12),tid:'E28011702000'+hex(12),user:'0'.repeat(128),reserved:'0'.repeat(16),base:rnd(-72,-38),angle:rnd(0,360),ant:1+(i%4),killed:false,pc:'3000'}));
-      info={driver:'模拟器（浏览器内）',host:'simulator',model:'模拟读写器（非真实设备）',serial:'SIM-0001',firmware:'sim-1.0',antennaCount:4,txPowerMin:10,txPowerMax:30,
-        rxSensitivity:[-80,-75,-70,-65,-60,-55,-50].map((d,i)=>({index:i+1,dbm:d})),modes:[[0,'Max Throughput'],[1,'Hybrid'],[2,'Dense Reader M4'],[3,'Dense Reader M8'],[4,'MaxMiller'],[1000,'AutoSet Dense Reader'],[1002,'AutoSet Static']].map(([id,n])=>({id,label:`${id} · ${n}`})),
-        supportsAccess:true,supportsDoppler:true,antennas:[1,2,3,4].map(id=>({id,connected:true}))};
-      log('info','正在连接 模拟器（SIM）…'); connected=true; log('info',`已连接：${info.model} · 固件 ${info.firmware}`); push(); return state(); },
-    disconnect:async()=>{ if(connected){ await stop(); connected=false; info=null; log('info','已断开连接'); push(); } return state(); },
-    start:async c=>{ await start(c); return state(); },
-    stop:async()=>{ await stop(); return state(); },
-    config:async c=>{ lastCfg=c; if(running) await start(c); return state(); },
-    access:async r=>access(r),
+function makeLocal() {
+  const me = { kind: 'local', online: true, version: VERSION, sims: new Map(), batches: new Map() };
+  const flush = () => { for (const [id, b] of me.batches) { if (!b.map.size) continue; const reads = [...b.map.values()]; b.map = new Map(); handlers.tags({ id, reads, total: b.n, ts: Date.now() }, me); b.n = 0; } };
+  setInterval(flush, 200);
+  const onTag = (id, t) => { let b = me.batches.get(id); if (!b) me.batches.set(id, b = { map: new Map(), n: 0 }); b.n += t.count || 1; const k = t.epc + '|' + t.antenna, e = b.map.get(k);
+    if (!e) b.map.set(k, { ...t, maxRssi: t.rssi, minRssi: t.rssi, rssiSum: t.rssi ?? 0, rssiN: t.rssi != null ? 1 : 0 });
+    else { e.count += t.count || 1; e.rssi = t.rssi; e.rssiSum += t.rssi; e.rssiN++; e.maxRssi = Math.max(e.maxRssi, t.rssi); e.minRssi = Math.min(e.minRssi, t.rssi); for (const f of ['phase', 'doppler', 'channel', 'freq', 'tid', 'pc', 'rts', 'power']) if (t[f] != null) e[f] = t[f]; e.ts = t.ts; } };
+  const st = (id, s) => ({ id, connected: !!s, running: !!(s && s.running), info: s ? s.info : null, driver: 'sim' });
+  me.api = async (p, b = {}) => {
+    const s = me.sims.get(b.id);
+    switch (p) {
+      case 'state': return { version: VERSION, sources: Object.fromEntries([...me.sims.keys()].map(id => [id, st(id, me.sims.get(id))])) };
+      case 'connect': { if (s) s.disconnect(); const sim = new TagScopeSim((ev, ...a) => {
+          if (ev === 'tag') onTag(b.id, a[0]); else if (ev === 'log') handlers.log({ id: b.id, level: a[0], msg: a[1], ts: Date.now() });
+          else if (ev === 'rospec') handlers.rospec({ id: b.id, ev: a[0], ts: Date.now() }); else if (ev === 'gpi') handlers.gpi({ id: b.id, ...a[0], ts: Date.now() }); });
+        await sleep(250); sim.connect({ simTags: b.simTags, host: 'browser-sim' }); me.sims.set(b.id, sim); handlers.log({ id: b.id, level: 'info', msg: `已连接：${sim.info.model}`, ts: Date.now() }); return st(b.id, sim); }
+      case 'disconnect': if (s) { s.stop(); me.sims.delete(b.id); } return st(b.id, null);
+      case 'start': if (!s) throw new Error('数据源未连接'); s.start(b.cfg); return st(b.id, s);
+      case 'stop': if (s) s.stop(); return st(b.id, s);
+      case 'access': if (!s) throw new Error('数据源未连接'); return s.accessOp(b);
+      case 'gpo': if (!s) throw new Error('数据源未连接'); return s.setGpo(b.port, b.state);
+      case 'gpi': if (!s) throw new Error('数据源未连接'); s.setGpi(b.port, b.level); return { port: b.port, level: b.level };
+    }
+    throw new Error('未知操作 ' + p);
   };
-  me.api=(p,b)=>routes[p](b);
-  me.open=()=>{ $('#offline').hidden=true; push(); };
-  me.close=()=>{ me.closed=true; clearInterval(flush); clearInterval(timer); clearTimeout(runTimer); };
   return me;
 }
-function pickBackend(){
-  const local = CLOUD && (!source || source.driver==='sim'), base = CLOUD ? bridgeUrl : '';
-  if(backend && (local ? backend.kind==='local' : backend.kind==='bridge'&&backend.base===base)) return;
-  if(backend) backend.close();
-  backend = local ? makeLocal() : makeBridge(base);
-  $('#offline').hidden=true; S={connected:false,running:false,info:null}; backend.open();
+function backendOf(src) {
+  const key = CLOUD && src.iface === 'sim' ? 'local' : CLOUD ? normUrl(src.bridge || bridgeUrl) : '';
+  if (!backends.has(key)) backends.set(key, key === 'local' ? makeLocal() : makeBridge(key));
+  return backends.get(key);
 }
-const store = { get(k,d){ try{ const v=localStorage.getItem('tagscope.'+k); return v==null?d:JSON.parse(v);}catch(_){return d;} }, set(k,v){ localStorage.setItem('tagscope.'+k, JSON.stringify(v)); } };
-
-// ---------- state ----------
-let S={connected:false,running:false,info:null}, busy=false;
-let source = store.get('source', null);
-let cfg = store.get('cfg', { ants:'1', mode:1002, modeCustom:0, pop:32, session:1, search:2, power:30, rx:'', duration:0, fastId:false, doppler:false, per:{}, filter:{enabled:false,bank:'epc',action:'include',pointer:32,len:'',mask:''} });
-let profiles = store.get('profiles', {});
-let tags=new Map(), order=0, totalReads=0, sec=0, rateNow=0, selected=null, toi=null, readLog=[];
-let sort={key:'idx',dir:1}, view='table', elapsed=0;
-
-// ---------- columns (ItemTest names) ----------
-const COLS=[
- {k:'idx',l:'#',n:1,on:1},{k:'epc',l:'EPC',m:1,on:1},{k:'tid',l:'TID',m:1,on:1},{k:'pc',l:'PC',m:1,on:0},{k:'count',l:'读取次数',n:1,on:1},
- {k:'from',l:'最后读取自',on:1},{k:'first',l:'首次读取',on:1,f:tstr},{k:'last',l:'最后读取',on:1,f:tstr},{k:'since',l:'距上次读取（秒）',n:1,on:1,f:v=>(v/1000).toFixed(1)},
- {k:'rssi',l:'最近 RSSI',n:1,on:1,f:v=>v.toFixed(1)},{k:'avg',l:'RSSI 平均',n:1,on:1,f:v=>v.toFixed(1)},{k:'max',l:'RSSI 最大',n:1,on:1,f:v=>v.toFixed(1)},{k:'min',l:'RSSI 最小',n:1,on:1,f:v=>v.toFixed(1)},
- {k:'antenna',l:'天线',n:1,on:1},{k:'power',l:'功率',n:1,on:1,f:v=>v.toFixed(2)},{k:'phase',l:'相位角',n:1,on:1,f:v=>(+v).toFixed(1)},{k:'doppler',l:'多普勒频率',n:1,on:1,f:v=>(+v).toFixed(2)},
- {k:'freq',l:'频率 MHz',n:1,on:0,f:v=>(+v).toFixed(2)},{k:'rate',l:'读速 /秒',n:1,on:0,f:v=>v.toFixed(1)}];
-let colOn = store.get('cols', Object.fromEntries(COLS.map(c=>[c.k,!!c.on])));
-let listOn = store.get('listCols', {tid:true,count:true,antenna:true,rssi:true,last:true,from:false,avg:false,phase:false});
-
-// ---------- navigation ----------
-function show(v){ $$('.view').forEach(x=>x.hidden = x.id!=='v-'+v); $$('.nav-i[data-view]').forEach(b=>b.toggleAttribute('aria-current', b.dataset.view===v)); $$('.nav-i[data-view]').forEach(b=>{ if(b.dataset.view===v) b.setAttribute('aria-current','page'); }); if(v==='inventory') render(true); }
-$$('.nav-i[data-view]').forEach(b=>b.onclick=()=>show(b.dataset.view));
-
-// ---------- data source ----------
-function renderSource(){
-  const el=$('#dsList');
-  if(!source){ el.innerHTML='<div class="ds-empty">点击 + 添加读写器</div>'; return; }
-  const ifn={llrp:'LLRP',rest:'IoT 接口',sim:'模拟器'}[source.driver];
-  el.innerHTML=`<div class="ds"><div class="nm" id="ds-open" title="读写器设置" tabindex="0"><b>${esc(source.nick||source.host||'模拟读写器')}</b><span>${ifn}${S.connected?' · '+(S.running?'盘点中':'已连接'):''}</span></div>
-   <label class="sw ${busy?'busy':''}" title="启用 / 停用"><input type="checkbox" id="ds-sw" aria-label="启用数据源" ${S.connected?'checked':''} ${busy?'disabled':''}><span></span></label>
-   <button class="ib" id="ds-gear" title="读写器设置" aria-label="读写器设置"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button><button class="ib" id="ds-del" title="移除数据源" aria-label="移除数据源"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`;
-  $('#ds-sw').onchange=e=>toggleSource(e.target.checked);
-  $('#ds-gear').onclick=openSettings; $('#ds-open').onclick=openSettings; $('#ds-open').onkeydown=e=>{if(e.key==='Enter')openSettings();};
-  $('#ds-del').onclick=async()=>{ if(S.connected) await toggleSource(false); source=null; store.set('source',null); pickBackend(); renderSource(); };
+function setOnline(be, on) {
+  if (be.online === on) return; be.online = on;
+  for (const s of sources) if (backendOf(s) === be) { if (!on) { const r = rt(s.id); if (r.connected) { r.connected = false; r.running = false; } r.err = '桥接服务不可达'; } }
+  if (on) for (const s of sources) if (backendOf(s) === be && s.enabled) { const r = rt(s.id); r.err = ''; }
+  renderSources(); renderOffline(); renderBridgeTxt();
 }
-async function toggleSource(on){
-  busy=true; renderSource();
-  try{
-    if(on){ const s=source; applyState(await api('connect',{driver:s.driver,host:s.host,port:s.port||undefined,tls:s.tls,user:s.user,pass:s.pass||'impinj',insecure:s.insecure,simTags:s.simTags})); }
-    else applyState(await api('disconnect',{}));
-  }catch(e){ toast(e.message); }
-  busy=false; renderSource();
+function renderOffline() {
+  const bad = [...backends.values()].filter(b => b.kind === 'bridge' && b.online === false && sources.some(s => s.enabled && backendOf(s) === b));
+  const o = $('#offline'); if (!bad.length) { o.hidden = true; return; }
+  o.innerHTML = CLOUD ? `无法连接 TagScope 桥接服务（<span class="mono">${esc(bad.map(b => b.base).join('、'))}</span>）。请在可访问读写器的电脑上运行 <b>node server.js</b> 并保持窗口打开；如浏览器询问是否允许访问本地网络 / 本设备上的应用，请选择“允许”。仅体验界面可添加“模拟读写器”数据源。`
+    : '与 TagScope 桥接服务的连接已断开，正在重试…'; o.hidden = false;
 }
-function dsUI(){ const d=$('#d-if').value; $$('.d-rest').forEach(e=>e.hidden=d!=='rest'); $$('.d-sim').forEach(e=>e.hidden=d!=='sim'); $$('.d-nsim').forEach(e=>e.hidden=d==='sim'); $$('.d-bridge').forEach(e=>e.hidden=!CLOUD||d==='sim'); $$('.d-simc').forEach(e=>e.hidden=!CLOUD||d!=='sim'); $('#d-port').placeholder=d==='rest'?($('#d-tls').value==='1'?'443':'80'):'5084'; }
-$('#d-if').onchange=dsUI; $('#d-tls').onchange=dsUI;
-$('#ds-add').onclick=()=>{ const s=source||{}; $('#d-host').value=s.host||''; $('#d-nick').value=s.nick||''; $('#d-if').value=s.driver||'llrp'; $('#d-port').value=s.port||''; $('#d-tls').value=s.tls===false?'0':'1'; $('#d-user').value=s.user||'root'; $('#d-ins').checked=s.insecure!==false; $('#d-sim').value=s.simTags||40; $('#d-bridge').value=bridgeUrl; dsUI(); openDlg('#dlg-ds'); $('#d-host').focus(); };
-$('#d-ok').onclick=async()=>{ const d=$('#d-if').value; if(d!=='sim'&&!$('#d-host').value.trim()) return toast('请输入主机名或 IP 地址');
-  if(S.connected) await toggleSource(false);
-  if(CLOUD&&d!=='sim'){ bridgeUrl=normUrl($('#d-bridge').value)||'http://localhost:8080'; store.set('bridge',bridgeUrl); }
-  source={driver:d,host:$('#d-host').value.trim(),nick:$('#d-nick').value.trim(),port:+$('#d-port').value||0,tls:$('#d-tls').value==='1',user:$('#d-user').value,pass:$('#d-pass').value,insecure:$('#d-ins').checked,simTags:+$('#d-sim').value};
-  store.set('source',{...source,pass:''}); closeDlg('#dlg-ds'); pickBackend(); renderSource(); toggleSource(true); };
+function renderBridgeTxt() { const b = [...backends.values()].find(x => x.kind === 'bridge'); $('#bridgeTxt').textContent = b ? (b.online ? '桥接 ' + (b.version || '') : '桥接离线') : (CLOUD ? '网页版' : ''); }
 
-// ---------- dialogs ----------
-function openDlg(id){ $(id).hidden=false; }
-function closeDlg(id){ $(id).hidden=true; }
-$$('[data-close]').forEach(b=>b.onclick=()=>b.closest('.ov').hidden=true);
-$$('.ov').forEach(o=>o.addEventListener('mousedown',e=>{ if(e.target===o) o.hidden=true; }));
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ $$('.ov').forEach(o=>o.hidden=true); hideMenu(); } });
-$$('#dlg-set .tabs button').forEach(b=>b.onclick=()=>{ $$('#dlg-set .tabs button').forEach(x=>{x.setAttribute('aria-selected',x===b); $('#'+x.dataset.p).hidden=x!==b;}); });
-
-// ---------- reader settings ----------
-function fillSettings(c){
-  const info=S.info||{}, modes=info.modes&&info.modes.length?info.modes:DEFAULT_MODES;
-  $('#s-mode').innerHTML=modes.map(m=>`<option value="${m.id}">${esc(m.label)}</option>`).join('')+'<option value="custom">自定义…</option>';
-  $('#s-mode').value=[...$('#s-mode').options].some(o=>o.value==String(c.mode))?String(c.mode):'custom'; $('#s-mc').value=c.mode; $('#s-mc-w').hidden=$('#s-mode').value!=='custom';
-  const rx=[...new Set((info.rxSensitivity||[]).map(r=>r.dbm))].sort((a,b)=>a-b);
-  const rxOpts='<option value="">最大</option>'+rx.map(d=>`<option value="${d}">${d}</option>`).join('');
-  $('#s-rx').innerHTML=rxOpts; $('#s-rx').value=String(c.rx??'');
-  $('#s-ants').value=c.ants; $('#s-pop').value=c.pop; $('#s-ses').value=c.session; $('#s-search').value=c.search; $('#s-pwr').value=c.power; $('#s-pwr').min=info.txPowerMin??10; $('#s-pwr').max=info.txPowerMax??32.5;
-  $('#s-dur').value=c.duration; $('#s-fastid').checked=c.fastId; $('#s-dop').checked=c.doppler;
-  const n=Math.min(info.antennaCount||4,32), conn=Object.fromEntries((info.antennas||[]).map(a=>[a.id,a.connected]));
-  $('#antBody').innerHTML=Array.from({length:n},(_,i)=>{const id=i+1,p=c.per[id]||{}; return `<tr data-id="${id}"><td>${id}</td><td>${conn[id]===undefined?'—':conn[id]?'<span style="color:var(--ok)">● 已连接</span>':'<span style="color:var(--mu)">○ 未检测到</span>'}</td>
-    <td><input type="number" class="pp" step="0.25" placeholder="${c.power}" value="${p.power??''}" aria-label="天线 ${id} 功率"></td><td><select class="pr" aria-label="天线 ${id} 灵敏度"><option value="">（默认）</option>${rx.map(d=>`<option value="${d}" ${String(p.rx)===String(d)?'selected':''}>${d}</option>`).join('')}</select></td></tr>`;}).join('');
-  const f=c.filter; $('#f-on').checked=f.enabled; $('#f-bank').value=f.bank; $('#f-act').value=f.action; $('#f-ptr').value=f.pointer; $('#f-len').value=f.len; $('#f-mask').value=f.mask;
-  $('#p-sel').innerHTML='<option value="">（当前设置）</option>'+Object.keys(profiles).map(k=>`<option>${esc(k)}</option>`).join('');
+/* =====================================================================
+   Data sources
+   ===================================================================== */
+let sources = store.get('sources', null);
+if (!sources) { // migrate v1 single source
+  const old = store.get('source', null); sources = [];
+  if (old && old.host !== undefined) sources.push({ id: uid(), host: old.host || (old.driver === 'sim' ? 'simulator' : ''), nick: old.nick || '', iface: old.driver || 'llrp', port: old.port || '', tls: !!old.tls, ins: old.insecure !== false, cred: !!old.user, user: old.user || '', pass: old.pass || '', simTags: old.simTags || 40, enabled: false, presets: {}, active: 'default' });
 }
-$('#s-mode').onchange=()=>$('#s-mc-w').hidden=$('#s-mode').value!=='custom';
-$('#p-sel').onchange=()=>{ const p=profiles[$('#p-sel').value]; if(p) fillSettings(JSON.parse(JSON.stringify(p))); };
-function readSettings(){
-  const m=$('#s-mode').value, per={};
-  $$('#antBody tr').forEach(tr=>{ const pw=tr.querySelector('.pp').value, rx=tr.querySelector('.pr').value; if(pw!==''||rx!=='') per[tr.dataset.id]={power:pw===''?undefined:+pw, rx:rx===''?undefined:+rx}; });
-  return { ants:$('#s-ants').value, mode:m==='custom'?+$('#s-mc').value:+m, pop:+$('#s-pop').value, session:+$('#s-ses').value, search:+$('#s-search').value, power:+$('#s-pwr').value, rx:$('#s-rx').value===''?'':+$('#s-rx').value,
-    duration:+$('#s-dur').value, fastId:$('#s-fastid').checked, doppler:$('#s-dop').checked, per,
-    filter:{enabled:$('#f-on').checked,bank:$('#f-bank').value,action:$('#f-act').value,pointer:+$('#f-ptr').value,len:$('#f-len').value,mask:$('#f-mask').value.replace(/\s/g,'')} };
+const runtime = {};
+const rt = id => runtime[id] || (runtime[id] = { connected: false, running: false, info: null, err: '', connecting: false });
+const srcById = id => sources.find(s => s.id === id);
+const nameOf = s => s ? (s.nick || s.host || '模拟读写器') : '';
+const infoOf = s => rt(s.id).info || s.lastInfo || null;
+function saveSources() { store.set('sources', sources); }
+let view = 'inventory', cfgSrc = null;
+
+function renderSources() {
+  const el = $('#dsList');
+  if (!sources.length) { el.innerHTML = '<div class="empty-s">点击 ⊕ 添加读写器</div>'; return; }
+  el.innerHTML = sources.map(s => { const r = rt(s.id), i = infoOf(s);
+    const tip = [`主机名: ${s.iface === 'sim' ? '模拟器' : s.host}`, `接口: ${IFN[s.iface]}`, i ? `型号: ${i.model}` : '', i && i.region ? `区域: ${i.region}` : '', r.err ? `错误: ${r.err}` : r.connecting ? '正在连接…' : r.running ? '正在盘点' : r.connected ? '已连接' : '未连接'].filter(Boolean).join('\n');
+    return `<div class="ds${r.err && s.enabled ? ' bad' : ''}" data-id="${s.id}" title="${esc(tip)}" ${view === 'dscfg' && cfgSrc === s.id ? 'aria-current="page"' : ''}>
+      <span class="sw"><input type="checkbox" ${s.enabled ? 'checked' : ''} ${r.connecting ? 'disabled' : ''} aria-label="启用 ${esc(nameOf(s))}"><span></span></span>
+      <span class="nm">${esc(nameOf(s))}${r.connecting ? ' …' : ''}</span>
+      ${r.err && s.enabled && !r.connecting ? '<button class="retry" title="重新连接">重试</button>' : ''}
+      <button class="x" title="删除数据源" aria-label="删除 ${esc(nameOf(s))}">×</button></div>`; }).join('');
 }
-function antList(c){ return [...new Set(String(c.ants).split(/[\s,，;]+/).map(Number).filter(n=>n>0&&n<=64))].sort((a,b)=>a-b); }
-function wire(c){ const max=Math.max(4,S.info?.antennaCount||4), on=new Set(antList(c));
-  return { mode:c.mode, searchMode:c.search, session:c.session, tagPopulation:c.pop, duration:c.duration, fastId:c.fastId, doppler:c.doppler,
-    antennas:Array.from({length:max},(_,i)=>{const id=i+1,p=c.per[id]||{}; return {id,enabled:on.has(id),txDbm:p.power??c.power,rxDbm:p.rx??c.rx};}),
-    filter:{enabled:c.filter.enabled,bank:c.filter.bank,action:c.filter.action,pointer:c.filter.pointer,maskBits:c.filter.len,mask:c.filter.mask} }; }
-function openSettings(){ fillSettings(cfg); $$('#dlg-set .tabs button')[0].click(); openDlg('#dlg-set'); }
-$('#b-settings').onclick=openSettings;
-$('#s-ok').onclick=async()=>{ const c=readSettings(); if(!antList(c).length) return toast('请至少填写一个天线编号'); cfg=c; store.set('cfg',cfg); closeDlg('#dlg-set');
-  if(S.connected){ try{ applyState(await api('config',wire(cfg))); addLog({level:'info',msg:'读写器设置已应用'+(S.running?'，盘点已重新启动':''),ts:Date.now()}); }catch(e){ toast(e.message); } } };
-$('#p-save').onclick=()=>{ const n=prompt('配置名称',`配置 ${Object.keys(profiles).length+1}`); if(!n) return; profiles[n]=readSettings(); store.set('profiles',profiles); fillSettings(profiles[n]); $('#p-sel').value=n; };
-
-// ---------- state from server ----------
-function applyState(s){
-  const wasConn=S.connected; S=s;
-  $('#b-start').disabled=!s.connected||s.running; $('#b-stop').disabled=!s.running; $('#b-settings').disabled=!source;
-  ['#m-read','#m-write','#x-wepc','#x-lock','#x-kill'].forEach(id=>$(id).disabled=!s.connected||!s.info?.supportsAccess);
-  $('#sb-dot').className='dot'+(s.running?' run':s.connected?' on':''); $('#sb-state').textContent=s.running?'盘点中':s.connected?`已连接 · ${s.info.model}`:'未连接';
-  $('#sb-sim').hidden=s.driver!=='sim';
-  $('#aboutReader').innerHTML=s.connected?Object.entries({驱动:s.info.driver,型号:s.info.model,'序列号 / ID':s.info.serial||'—',固件:s.info.firmware||'—',天线端口:s.info.antennaCount,功率范围:`${s.info.txPowerMin} – ${s.info.txPowerMax} dBm`,'Impinj 扩展':s.info.impinjExtensions===undefined?'—':s.info.impinjExtensions?'已启用':'不可用'}).map(([k,v])=>`${k}：<span class="mono">${esc(v)}</span>`).join('<br>'):'未连接';
-  if(s.connected&&!wasConn&&S.info&&source&&source.driver!==s.driver){}
-  renderSource();
+const IFN = { llrp: 'LLRP', rest: 'IoT（REST）', sim: '模拟器' };
+$('#dsList').addEventListener('click', e => {
+  const row = e.target.closest('.ds'); if (!row) return; const s = srcById(row.dataset.id);
+  if (e.target.matches('input')) { toggleSource(s, e.target.checked); return; }
+  if (e.target.closest('.sw')) return;
+  if (e.target.matches('.x')) { deleteSource(s); return; }
+  if (e.target.matches('.retry')) { connectSource(s); return; }
+  openCfg(s.id);
+});
+$('#dsList').addEventListener('contextmenu', e => {
+  const row = e.target.closest('.ds'); if (!row) return; e.preventDefault(); const s = srcById(row.dataset.id);
+  showMenu(e.clientX, e.clientY, [{ l: '编辑数据源', f: () => openAdd(s) }, { l: '设备信息', f: () => deviceInfo(s), dis: !infoOf(s) }, '-', { l: rt(s.id).connected ? '断开连接' : '连接', f: () => rt(s.id).connected ? toggleSource(s, false) : toggleSource(s, true) }, { l: '删除数据源', f: () => deleteSource(s) }]);
+});
+async function toggleSource(s, on) {
+  s.enabled = on; saveSources();
+  if (on) await connectSource(s); else { await disconnectSource(s); rt(s.id).err = ''; }
+  renderSources(); renderOffline(); refreshParticipants();
 }
-
-// ---------- events ----------
-
-function ingest(b){
-  totalReads+=b.total; sec+=b.total; const from=source?.nick||source?.host||'模拟读写器';
-  for(const r of b.reads){
-    let t=tags.get(r.epc);
-    if(!t){ t={idx:++order,epc:r.epc,count:0,first:r.firstTs,sum:0,n:0,max:-999,min:999}; tags.set(r.epc,t); }
-    t.count+=r.count; t.last=r.ts; t.from=from; t.antenna=r.antenna; t.rssi=r.rssi; t.sum+=r.rssiSum||0; t.n+=r.rssiN||0;
-    if(r.maxRssi!=null) t.max=Math.max(t.max,r.maxRssi); if(r.minRssi!=null) t.min=Math.min(t.min,r.minRssi);
-    t.tid=r.tid||t.tid; t.pc=r.pc||t.pc; t.phase=r.phase; t.doppler=r.doppler; t.freq=r.freq;
-    const w=wire(cfg).antennas.find(a=>a.id===r.antenna); t.power=w?+w.txDbm:undefined;
-    if($('#lg-on').checked){ readLog.push([new Date(r.ts).toISOString(),r.epc,r.tid||'',r.antenna,r.count,r.rssi??'',r.phase??'',r.freq??'']); if(readLog.length>500000) readLog.shift(); }
+function connArgs(s) {
+  let host = s.host.trim(), port = s.port; const m = host.match(/^\[(.+)\]:(\d+)$/) || host.match(/^([^:\[\]]+):(\d+)$/); if (m) { host = m[1]; port = port || m[2]; } host = host.replace(/^\[|\]$/g, '');
+  return { id: s.id, driver: s.iface, host, port: +port || undefined, tls: s.tls, insecure: s.ins, user: s.cred ? s.user : undefined, pass: s.cred ? s.pass : undefined, simTags: s.simTags };
+}
+async function connectSource(s) {
+  const r = rt(s.id); if (r.connecting) return; r.connecting = true; r.err = ''; renderSources();
+  try { const st = await backendOf(s).api('connect', connArgs(s)); applySrcState(st); }
+  catch (e) { r.err = e.message; r.connected = false; addLog({ id: s.id, level: 'error', msg: e.message, ts: Date.now() }); toast(`${nameOf(s)}：${e.message}`); }
+  finally { r.connecting = false; renderSources(); renderOffline(); if (view === 'dscfg' && cfgSrc === s.id) renderCfgHead(); }
+}
+async function disconnectSource(s) {
+  const r = rt(s.id); if (!r.connected) return;
+  try { applySrcState(await backendOf(s).api('disconnect', { id: s.id })); } catch (e) { r.connected = false; }
+}
+function applySrcState(st) {
+  const s = srcById(st.id); if (!s) return; const r = rt(st.id), was = r.connected;
+  r.connected = !!st.connected; r.running = !!st.running;
+  if (st.info) { r.info = st.info; s.lastInfo = st.info; saveSources(); }
+  if (was && !r.connected && s.enabled) { r.err = r.err || '连接已断开'; if (run && run.parts.includes(s.id)) addLog({ id: s.id, level: 'warn', msg: '数据源在运行中断开', ts: Date.now() }); }
+  if (r.connected) r.err = '';
+  renderSources();
+}
+handlers.state = (st) => applySrcState(st);
+handlers.hello = (d, be) => {
+  for (const s of sources) if (backendOf(s) === be) {
+    const st = d.sources && d.sources[s.id];
+    if (st) applySrcState(st); else { const r = rt(s.id); r.connected = false; r.running = false; if (s.enabled && !r.connecting) connectSource(s); }
   }
+  renderUpdates();
+};
+async function deleteSource(s) {
+  if (!confirm(`删除数据源“${nameOf(s)}”？其预设也会一并删除。`)) return;
+  await disconnectSource(s).catch(() => { });
+  sources = sources.filter(x => x !== s); delete runtime[s.id]; saveSources();
+  if (cfgSrc === s.id) show('inventory'); renderSources(); renderOffline(); refreshParticipants();
 }
-setInterval(()=>{ rateNow=sec; sec=0; $('#lg-info').textContent=`已记录 ${fmt(readLog.length)} 条读取。`; },1000);
 
-// ---------- table ----------
-function cell(t,c){ let v = c.k==='since'?Date.now()-t.last : c.k==='avg'?(t.n?t.sum/t.n:undefined) : c.k==='max'?(t.max>-999?t.max:undefined) : c.k==='min'?(t.min<999?t.min:undefined) : c.k==='rate'?t.count/Math.max(1,(t.last-t.first)/1000) : t[c.k];
-  return v; }
-function rowsData(){ let r=[...tags.values()];
-  if(toi){ if($('#toiOnly').checked) r=r.filter(t=>toi.set.has(t.epc)); if($('#toiOnly').checked) for(const e of toi.set) if(!tags.has(e)) r.push({idx:'',epc:e,miss:true}); }
-  const c=COLS.find(x=>x.k===sort.key)||COLS[0];
-  r.sort((a,b)=>{ if(a.miss!==b.miss) return a.miss?1:-1; const x=cell(a,c),y=cell(b,c); if(x==null) return 1; if(y==null) return -1; return (x>y?1:x<y?-1:0)*sort.dir; }); return r; }
-function renderHead(){ $('#thead').innerHTML=COLS.filter(c=>colOn[c.k]).map(c=>`<th data-k="${c.k}" scope="col" ${sort.key===c.k?`aria-sort="${sort.dir>0?'ascending':'descending'}"`:''}>${c.l}</th>`).join(''); }
-function shade(t){ if(t.miss) return '#fff'; const fade=(+$('#as-fade').value||10)*1000, age=Date.now()-t.last; if(age<1000) return '#fff'; const k=Math.min(1,(age-1000)/Math.max(1,fade-1000)); const v=Math.round(255-k*(255-160)); return `rgb(${v},${v},${v-2})`; }
-function render(force){
-  if($('#v-inventory').hidden) return;
-  const r=rowsData(); $('#empty').hidden=r.length>0;
-  $('#c-uniq').textContent=fmt(tags.size); $('#c-total').textContent=fmt(totalReads); $('#c-rate').textContent=fmt(rateNow);
-  if(S.running&&S.startedAt) elapsed=Date.now()-S.startedAt; const s=Math.floor(elapsed/1000);
-  $('#c-time').textContent=[s/3600,s%3600/60,s%60].map(x=>String(Math.floor(x)).padStart(2,'0')).join(':');
-  if(toi){ const found=[...toi.set].filter(e=>tags.has(e)).length; $('#toiTxt').textContent=`关注标签（${toi.name}）：已读到 ${found} / ${toi.set.size}`; }
-  const lim=r.slice(0,2000), vis=COLS.filter(c=>colOn[c.k]);
-  if(view==='table'){
-    $('#tbody').innerHTML=lim.map(t=>{ const bg=shade(t); return `<tr data-epc="${t.epc}" class="${t.epc===selected?'sel':''} ${t.miss?'miss':''}">`+vis.map(c=>{ if(t.miss) return `<td class="${c.m?'m':''}" style="background:${bg}">${c.k==='epc'?t.epc:c.k==='count'?'未读到':''}</td>`; const v=cell(t,c); return `<td class="${c.m?'m':''}${c.n?' n':''}" style="background:${bg}">${v==null||v===''?'':esc(c.f?c.f(v):v)}</td>`; }).join('')+'</tr>'; }).join('');
-  } else {
-    const F=[['tid','TID'],['count','次数'],['antenna','天线'],['rssi','RSSI'],['avg','RSSI 平均'],['phase','相位'],['from','读取自'],['last','最后读取']];
-    $('#cards').innerHTML=lim.map(t=>`<div class="card ${t.epc===selected?'sel':''}" data-epc="${t.epc}" style="background:${shade(t)}"><div class="e">${t.epc}</div><div class="r">${t.miss?'未读到':F.filter(([k])=>listOn[k]).map(([k,l])=>{const c=COLS.find(x=>x.k===k),v=cell(t,c);return v==null?'':`<span>${l} <b>${esc(c.f?c.f(v):v)}</b></span>`;}).join('')}</div></div>`).join('');
-  }
+/* ---------- add / edit page ---------- */
+let editSrc = null;
+function daUI() {
+  const d = $('#da-if').value;
+  $$('.da-rest').forEach(e => e.hidden = d !== 'rest'); $$('.da-sim').forEach(e => e.hidden = d !== 'sim'); $$('.da-nsim').forEach(e => e.hidden = d === 'sim');
+  $$('.da-bridge').forEach(e => e.hidden = !CLOUD || d === 'sim'); $$('.da-cr').forEach(e => e.hidden = d !== 'rest' || !$('#da-cred').checked);
+  $('#da-port').placeholder = d === 'rest' ? ($('#da-tls').checked ? '443' : '80') : '5084';
+  $('#da-host').disabled = d === 'sim'; if (d === 'sim' && !$('#da-host').value) $('#da-host').value = 'simulator'; else if (d !== 'sim' && $('#da-host').value === 'simulator') $('#da-host').value = '';
 }
-renderHead(); setInterval(render,333);
-$('#thead').addEventListener('click',e=>{ const th=e.target.closest('th'); if(!th) return; const k=th.dataset.k; sort={key:k,dir:sort.key===k?-sort.dir:(['epc','tid','from','idx','first'].includes(k)?1:-1)}; renderHead(); render(); });
-$('#thead').addEventListener('contextmenu',e=>{ e.preventDefault(); showMenu(e.clientX,e.clientY, COLS.map(c=>`<label><input type="checkbox" data-col="${c.k}" ${colOn[c.k]?'checked':''}>${c.l}</label>`).join(''), m=>m.querySelectorAll('input').forEach(i=>i.onchange=()=>{ colOn[i.dataset.col]=i.checked; store.set('cols',colOn); renderHead(); render(); buildColSettings(); })); });
-function pick(e){ const r=e.target.closest('[data-epc]'); if(!r) return null; selected=r.dataset.epc; render(); return selected; }
-['#tbody','#cards'].forEach(id=>{ $(id).addEventListener('click',pick); $(id).addEventListener('dblclick',e=>{ if(pick(e)) openMemory(selected); });
-  $(id).addEventListener('contextmenu',e=>{ const epc=pick(e); if(!epc) return; e.preventDefault(); const t=tags.get(epc)||{};
-    showMenu(e.clientX,e.clientY,`<button data-a="mem">标签存储访问</button><hr><button data-a="epc">复制 EPC</button>${t.tid?'<button data-a="tid">复制 TID</button>':''}<button data-a="flt">以此 EPC 设置过滤</button>`, m=>m.querySelectorAll('button').forEach(b=>b.onclick=()=>{ hideMenu(); const a=b.dataset.a;
-      if(a==='mem') openMemory(epc); if(a==='epc') navigator.clipboard?.writeText(epc); if(a==='tid') navigator.clipboard?.writeText(t.tid);
-      if(a==='flt'){ cfg.filter={...cfg.filter,enabled:true,bank:'epc',pointer:32,mask:epc,len:''}; store.set('cfg',cfg); openSettings(); $$('#dlg-set .tabs button')[2].click(); } })); }); });
-function showMenu(x,y,html,bind){ const m=$('#menu'); m.innerHTML=html; m.hidden=false; const w=m.offsetWidth,h=m.offsetHeight; m.style.left=Math.min(x,innerWidth-w-8)+'px'; m.style.top=Math.min(y,innerHeight-h-8)+'px'; bind(m); }
-function hideMenu(){ $('#menu').hidden=true; }
-document.addEventListener('mousedown',e=>{ if(!e.target.closest('#menu')) hideMenu(); });
-$('#vw-table').onclick=()=>{ view='table'; $('#vw-table').setAttribute('aria-pressed',true); $('#vw-list').setAttribute('aria-pressed',false); $('#grid').hidden=false; $('#cards').hidden=true; render(); };
-$('#vw-list').onclick=()=>{ view='list'; $('#vw-list').setAttribute('aria-pressed',true); $('#vw-table').setAttribute('aria-pressed',false); $('#grid').hidden=true; $('#cards').hidden=false; render(); };
-
-// ---------- inventory actions ----------
-$('#b-start').onclick=async()=>{ try{ if(!antList(cfg).length) throw new Error('请在读写器设置中填写天线编号'); $('#b-start').disabled=true; applyState(await api('start',wire(cfg))); }catch(e){ toast(e.message); applyState(S); } };
-$('#b-stop').onclick=async()=>{ try{ applyState(await api('stop',{})); }catch(e){ toast(e.message); } };
-$('#b-clear').onclick=()=>{ tags.clear(); order=0; totalReads=0; selected=null; elapsed=0; if(S.running) S.startedAt=Date.now(); render(); };
-function dl(name,lines){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
-const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
-function uniqueCsv(){ const vis=COLS.filter(c=>colOn[c.k]); return [vis.map(c=>c.l).join(',')].concat(rowsData().filter(t=>!t.miss).map(t=>vis.map(c=>{const v=cell(t,c); return v==null?'':(c.k==='first'||c.k==='last')?new Date(v).toISOString():c.f?c.f(v):v;}).join(','))); }
-$('#b-csv').onclick=()=>dl(`TagScope-${stamp()}.csv`,uniqueCsv());
-$('#lg-dl').onclick=()=>dl(`${$('#lg-prefix').value||'TagScope'}-reads-${stamp()}.csv`,['Time,EPC,TID,Antenna,Count,RSSI,Phase,FreqMHz',...readLog.map(r=>r.join(','))]);
-$('#lg-dlu').onclick=()=>dl(`${$('#lg-prefix').value||'TagScope'}-unique-${stamp()}.csv`,uniqueCsv());
-$('#lg-clr').onclick=()=>{ readLog=[]; $('#lg-info').textContent='已记录 0 条读取。'; };
-
-// ---------- tags of interest ----------
-$('#toi-add').onclick=()=>$('#toi-file').click();
-$('#toi-file').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; const txt=await f.text(); const set=new Set((txt.match(/[0-9A-Fa-f]{8,}/g)||[]).map(x=>x.toUpperCase()));
-  if(!set.size) return toast('文件中没有找到 EPC（每行一个十六进制 EPC）'); toi={name:f.name,set}; e.target.value=''; renderToi(); };
-function renderToi(){ $('#toiBar').hidden=!toi; $('#toiList').innerHTML=toi?`<div class="ds"><div class="nm"><b>${esc(toi.name)}</b><span>${toi.set.size} 个标签</span></div><button class="ib" id="toi-del" aria-label="移除关注标签"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`:'<div class="ds-empty">未载入文件</div>'; if(toi) $('#toi-del').onclick=()=>{ toi=null; $('#toiOnly').checked=false; renderToi(); }; render(); }
-$('#toiOnly').onchange=()=>render();
-
-// ---------- tag memory showcase ----------
-for(let i=1;i<=32;i++) $('#m-cnt').insertAdjacentHTML('beforeend',`<option ${i===8?'selected':''}>${i}</option>`);
-for(let i=0;i<32;i++) $('#m-off').insertAdjacentHTML('beforeend',`<option>${i}</option>`);
-function memGrid(data, fail){ const off=+$('#m-off').value, n=+$('#m-cnt').value, bank=$('#m-bank').value; let h='';
-  for(let r=0;r<n;r+=8){ const words=[]; for(let i=r;i<Math.min(n,r+8);i++){ const w=fail?'XXXX':(data?data.substr(i*4,4):''); words.push(`<input type="text" maxlength="4" data-w="${i}" value="${w}" class="${fail?'x':''}${bank==='epc'&&off+i<2?' c':''}" aria-label="字 ${off+i}" title="${bank==='epc'&&off+i===0?'CRC-16':bank==='epc'&&off+i===1?'PC':'字 '+(off+i)}">`); }
-    const hex=data&&!fail?data.substr(r*4,32):''; const asc=hex.replace(/(..)/g,(m)=>{const c=parseInt(m,16);return c>=32&&c<127?String.fromCharCode(c):'.';});
-    h+=`<div class="wl">${off+r}</div><div class="ws">${words.join('')}</div><div class="asc">${esc(asc)}</div>`; }
-  $('#mem').innerHTML=h; }
-['#m-cnt','#m-off','#m-bank'].forEach(id=>$(id).addEventListener('change',()=>memGrid()));
-function openMemory(epc){ $('#m-epc').value=epc; $('#x-epc').value=epc; show('memory'); }
-async function access(req,btn){ const out=$('#m-res'); btn.disabled=true; out.className='res'; out.textContent='执行中…';
-  try{ const r=await api('access',{targetEpc:$('#m-epc').value.replace(/\s/g,''),password:$('#m-pwd').value.replace(/\s/g,''),timeout:+$('#m-to').value,antenna:0,...req});
-    out.className='res '+(r.ok?'ok':'bad'); out.textContent=`${r.ok?'✓':'✗'} ${r.message}${r.epc?' · EPC '+r.epc:''}${r.antenna?' · 天线 '+r.antenna:''}${r.words!=null?' · 写入 '+r.words+' 字':''}`; return r; }
-  catch(e){ out.className='res bad'; out.textContent='✗ '+e.message; return null; } finally{ applyState(S); } }
-const hexOk=(v,w)=>/^[0-9a-f]*$/i.test(v)&&(!w||v.length%4===0);
-$('#m-read').onclick=async e=>{ if(!hexOk($('#m-pwd').value)) return toast('访问密码必须是十六进制'); const r=await access({op:'read',bank:$('#m-bank').value,wordPointer:+$('#m-off').value,wordCount:+$('#m-cnt').value},e.currentTarget); memGrid(r&&r.ok?r.data:null, !(r&&r.ok)); };
-$('#m-write').onclick=async e=>{ const ws=$$('#mem input').map(i=>i.value.trim().toUpperCase()); if(!ws.length||ws.some(w=>!/^[0-9A-F]{4}$/.test(w))) return toast('每个字必须是 4 位十六进制，请先读取或填写全部字');
-  if($('#m-bank').value==='tid') return toast('TID 存储区通常为只读');
-  let ptr=+$('#m-off').value, data=ws.join(''); if($('#m-bank').value==='epc'&&ptr<2){ const skip=2-ptr; data=data.slice(skip*4); ptr=2; if(!data) return toast('CRC 和 PC 字不能直接写入'); }
-  if(!confirm(`确定写入 ${data.length/4} 个字到 ${$('#m-bank').value.toUpperCase()} 存储区（从字 ${ptr} 开始）？`)) return;
-  await access({op:'write',bank:$('#m-bank').value,wordPointer:ptr,data},e.currentTarget); };
-$('#x-wepc').onclick=async e=>{ const d=$('#x-epc').value.replace(/\s/g,''); if(!d||!hexOk(d,true)) return toast('新 EPC 必须是十六进制，长度为 4 的倍数'); const r=await access({op:'writeEpc',data:d},e.currentTarget); if(r&&r.ok){ $('#m-epc').value=d; } };
-$('#x-lock').onclick=async e=>{ const p=$('#x-priv').value; if(p.startsWith('perma')&&!confirm('永久锁定 / 永久解锁不可撤销，确定执行？')) return; await access({op:'lock',field:$('#x-field').value,privilege:p},e.currentTarget); };
-$('#x-kill').onclick=async e=>{ const k=$('#x-kpwd').value.replace(/\s/g,''); if(!k||!hexOk(k)||!parseInt(k,16)) return toast('灭活密码必须是非零十六进制'); if(!confirm(`确定永久灭活标签 ${$('#m-epc').value||'（任意标签）'}？`)) return; await access({op:'kill',password:k},e.currentTarget); };
-memGrid();
-
-// ---------- application settings ----------
-function buildColSettings(){
-  $('#colsTable').innerHTML=COLS.map(c=>`<label class="chk"><input type="checkbox" data-c="${c.k}" ${colOn[c.k]?'checked':''}>${c.l}</label>`).join('');
-  $('#colsTable').querySelectorAll('input').forEach(i=>i.onchange=()=>{ colOn[i.dataset.c]=i.checked; store.set('cols',colOn); renderHead(); });
-  const F={tid:'TID',count:'读取次数',antenna:'天线',rssi:'最近 RSSI',avg:'RSSI 平均',phase:'相位角',from:'最后读取自',last:'最后读取'};
-  $('#colsList').innerHTML=Object.entries(F).map(([k,l])=>`<label class="chk"><input type="checkbox" data-c="${k}" ${listOn[k]?'checked':''}>${l}</label>`).join('');
-  $('#colsList').querySelectorAll('input').forEach(i=>i.onchange=()=>{ listOn[i.dataset.c]=i.checked; store.set('listCols',listOn); });
+['#da-if', '#da-tls', '#da-cred'].forEach(s => $(s).addEventListener('change', daUI));
+$('#da-advT').onclick = () => { const p = $('#da-adv'); p.hidden = !p.hidden; $('#da-advT .car').textContent = p.hidden ? '▼' : '▲'; };
+function openAdd(s) {
+  editSrc = s || null;
+  $('#da-title').textContent = s ? '编辑数据源' : '添加数据源'; $('#da-ok').textContent = s ? '保存' : '添加数据源';
+  const v = s || { host: '', nick: '', iface: CLOUD ? 'sim' : 'llrp', port: '', tls: true, ins: true, cred: false, user: '', pass: '', simTags: 40 };
+  $('#da-host').value = v.host; $('#da-nick').value = v.nick; $('#da-if').value = v.iface; $('#da-port').value = v.port || ''; $('#da-tls').checked = !!v.tls; $('#da-ins').checked = v.ins !== false;
+  $('#da-cred').checked = !!v.cred; $('#da-user').value = v.user || ''; $('#da-pass').value = v.pass || ''; $('#da-simn').value = v.simTags || 40; $('#da-bridge').value = v.bridge || bridgeUrl;
+  $('#da-herr').hidden = $('#da-nerr').hidden = true; $('#da-if').disabled = !!s;
+  daUI(); show('dsadd'); setTimeout(() => $('#da-host').focus(), 0);
 }
-buildColSettings(); $('#as-fade').value=store.get('fade',10); $('#as-fade').onchange=()=>store.set('fade',+$('#as-fade').value);
+$('#ds-add').onclick = () => openAdd(null);
+$('#da-cancel').onclick = () => show('inventory');
+$('#da-ok').onclick = async () => {
+  const iface = $('#da-if').value, host = $('#da-host').value.trim(), nick = $('#da-nick').value.trim();
+  $('#da-herr').hidden = !!host || iface === 'sim'; $('#da-host').classList.toggle('inv', !host && iface !== 'sim');
+  const dup = nick && sources.some(x => x !== editSrc && nameOf(x).toLowerCase() === nick.toLowerCase()); $('#da-nerr').hidden = !dup;
+  if ((!host && iface !== 'sim') || dup) return;
+  const v = { host: host || 'simulator', nick: nick || (iface === 'sim' ? uniqueNick('模拟读写器') : ''), iface, port: $('#da-port').value, tls: $('#da-tls').checked, ins: $('#da-ins').checked, cred: $('#da-cred').checked, user: $('#da-user').value, pass: $('#da-pass').value, simTags: +$('#da-simn').value || 40 };
+  if (CLOUD && iface !== 'sim') { v.bridge = normUrl($('#da-bridge').value) || 'http://localhost:8080'; bridgeUrl = v.bridge; store.set('bridge', bridgeUrl); }
+  let s = editSrc;
+  if (s) { const reconnect = rt(s.id).connected; if (reconnect) await disconnectSource(s); Object.assign(s, v); saveSources(); renderSources(); if (s.enabled) await connectSource(s); }
+  else { s = { id: uid(), ...v, enabled: true, presets: {}, active: 'default' }; sources.push(s); saveSources(); renderSources(); show('inventory'); await connectSource(s); if (rt(s.id).err) s.enabled = true; saveSources(); refreshParticipants(); return; }
+  show('inventory'); refreshParticipants();
+};
+function uniqueNick(b) { let n = b, i = 2; while (sources.some(s => nameOf(s) === n)) n = `${b} ${i++}`; return n; }
 
-// ---------- log ----------
-const logEl=$('#log'); let logs=[];
-function addLog(l){ logs.push(l); if(logs.length>800) logs.shift(); if(l.level!=='debug'){ const m=$('#sb-msg'); m.textContent=l.msg; m.className='msg '+l.level; } if(l.level==='debug'&&!$('#lgDebug').checked) return; appendLog(l); }
-function appendLog(l){ const at=logEl.scrollTop+logEl.clientHeight>=logEl.scrollHeight-20; const d=document.createElement('div'); d.className=l.level; d.innerHTML=`<span class="t">${tstr(l.ts)}</span> ${esc(l.msg)}`; logEl.appendChild(d); while(logEl.childElementCount>800) logEl.firstChild.remove(); if(at) logEl.scrollTop=logEl.scrollHeight; }
-$('#lgDebug').onchange=()=>{ logEl.innerHTML=''; logs.filter(l=>l.level!=='debug'||$('#lgDebug').checked).forEach(appendLog); };
-$('#lgClear').onclick=()=>{ logs=[]; logEl.innerHTML=''; };
-$('#sb-log').onclick=()=>{ $('#drawer').hidden=!$('#drawer').hidden; }; $('#lgClose').onclick=()=>$('#drawer').hidden=true;
-renderSource(); pickBackend();
+/* ---------- device information ---------- */
+function infoKv(s) {
+  const i = infoOf(s) || {}, r = rt(s.id), ants = (i.antennas || []).map(a => `${a.id}${a.connected === false ? '✗' : ''}`).join(', ');
+  const kv = [['昵称', nameOf(s)], ['主机名', s.iface === 'sim' ? '（模拟器）' : s.host], ['接口', IFN[s.iface] + (i.impinjExtensions ? '（Impinj 扩展）' : '')], ['状态', r.connected ? (r.running ? '盘点中' : '已连接') : (r.err || '未连接')],
+    ['制造商', i.manufacturer], ['型号', i.model], ['序列号', i.serial], ['固件版本', i.firmware], ['区域', i.region], ['天线端口', i.antennaCount ? `${i.antennaCount}（${ants}）` : ''],
+    ['发射功率范围', i.txPowerMin != null ? `${i.txPowerMin} – ${i.txPowerMax} dBm` : ''], ['RF 模式数', i.modes ? i.modes.length : ''], ['GPI / GPO', i.gpi != null ? `${i.gpi} / ${i.gpo}` : ''], ['频道数', i.channels]];
+  return kv.filter(x => x[1] !== undefined && x[1] !== '' && x[1] !== null).map(([k, v]) => `<span>${esc(k)}:</span><span>${esc(v)}</span>`).join('');
+}
+function deviceInfo(s) { dialog(`<h3>设备信息</h3><div class="kv">${infoKv(s)}</div><div class="acts"><button class="btn pri" data-close>关闭</button></div>`); }
+
+/* ---------- menus & dialogs ---------- */
+function menuHtml(items) { return items.map((it, i) => it === '-' ? '<hr>' : it.sub ? `<div class="has"><button type="button">${esc(it.l)}</button><div class="menu">${menuHtml(it.sub)}</div></div>` : `<button type="button" data-i="${it._i}" ${it.dis ? 'disabled' : ''}><span class="ck">${it.ck ? '✓' : ''}</span>${esc(it.l)}</button>`).join(''); }
+function showMenu(x, y, items, keep) {
+  const flat = []; const walk = a => a.forEach(it => { if (it && it !== '-') { if (it.sub) walk(it.sub); else { it._i = flat.length; flat.push(it); } } }); walk(items);
+  const m = $('#menu'); m.innerHTML = menuHtml(items); m.hidden = false;
+  const w = m.offsetWidth, h = m.offsetHeight; m.style.left = Math.min(x, innerWidth - w - 8) + 'px'; m.style.top = Math.min(y, innerHeight - h - 8) + 'px';
+  m.onclick = e => { const b = e.target.closest('button[data-i]'); if (!b || b.disabled) return; const it = flat[+b.dataset.i]; if (!keep) hideMenu(); it.f && it.f(); if (keep) { it.ck = !it.ck; b.querySelector('.ck').textContent = it.ck ? '✓' : ''; } };
+}
+function hideMenu() { $('#menu').hidden = true; }
+document.addEventListener('mousedown', e => { if (!e.target.closest('#menu')) hideMenu(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { hideMenu(); if (!$('#dlg').hidden) closeDialog(); } });
+let dlgResolve = null;
+function dialog(html, onOpen) { $('#dlgBox').innerHTML = html; $('#dlg').hidden = false; $$('#dlgBox [data-close]').forEach(b => b.onclick = closeDialog); onOpen && onOpen($('#dlgBox')); const f = $('#dlgBox input:not([readonly]),#dlgBox button.pri'); f && f.focus(); return new Promise(r => dlgResolve = r); }
+function closeDialog(v) { $('#dlg').hidden = true; if (dlgResolve) { const r = dlgResolve; dlgResolve = null; r(v instanceof Event ? undefined : v); } }
+function ask(title, label, value, check) {
+  return dialog(`<h3>${esc(title)}</h3><label class="row"><span>${esc(label)}</span><input type="text" id="ask-v" value="${esc(value || '')}" spellcheck="false"></label><div class="err note" id="ask-e" style="color:var(--err)"></div><div class="acts"><button class="btn pri" id="ask-ok">确定</button><button class="btn" data-close>取消</button></div>`, box => {
+    const ok = () => { const v = $('#ask-v').value.trim(), e = check ? check(v) : ''; if (e) { $('#ask-e').textContent = e; return; } closeDialog(v); };
+    $('#ask-ok').onclick = ok; $('#ask-v').onkeydown = e => { if (e.key === 'Enter') ok(); }; setTimeout(() => $('#ask-v').select(), 0);
+  });
+}
+
+/* =====================================================================
+   Presets & data source configuration
+   ===================================================================== */
+const FALLBACK_MODES = [[0, 'Max Throughput'], [1, 'Hybrid Mode'], [2, 'Dense Reader (M=4)'], [3, 'Dense Reader (M=8)'], [4, 'Max Miller'], [1000, 'Auto Set Dense Reader'], [1002, 'Auto Set Dense Reader Deep Scan'], [1003, 'Auto Set Static Fast'], [1004, 'Auto Set Static Dense Reader'],
+  [100, 'Max Throughput (R700 FCC)'], [120, 'Hybrid (R700 FCC)'], [142, 'Dense Reader M4 (R700 FCC)'], [185, 'Dense Reader M8 (R700 FCC)'], [140, 'Max Miller (R700 FCC)'], [1110, 'Deep Scan (R700 FCC)'], [1111, 'Static Fast (R700 FCC)'], [1112, 'Static DRM (R700 FCC)']].map(([id, l]) => ({ id, label: `${id} - ${l}` }));
+const range = (a, b, st = 1) => { const r = []; for (let v = a; v <= b + 1e-9; v += st) r.push(+v.toFixed(2)); return r; };
+const modesOf = i => i && i.modes && i.modes.length ? i.modes : FALLBACK_MODES;
+const txList = i => i && i.txPower && i.txPower.length ? [...new Set(i.txPower.map(Number))].sort((a, b) => a - b) : range(10, 33, 0.25);
+const rxList = i => i && i.rxSensitivity && i.rxSensitivity.length ? [...new Set(i.rxSensitivity.map(r => Number(r.dbm)))].sort((a, b) => a - b) : range(-80, -30, 1);
+function defaultPreset(i) {
+  i = i || {}; const n = i.antennaCount || 4, ids = modesOf(i).map(m => m.id), tx = txList(i), rx = rxList(i);
+  const mode = ids.includes(1002) ? 1002 : ids.includes(1110) ? 1110 : ids[0];
+  return { ants: range(1, n).join(', '), mode, search: 2, fastId: false, pop: 32, session: 2, phase: true, doppler: false,
+    power: tx.includes(30) ? 30 : tx[tx.length - 1], rx: rx[0], maxSens: true, per: {}, gpi: {}, filters: [], ldc: { enabled: false, emptyTimeout: 500, pingInterval: 200 } };
+}
+const clone = o => JSON.parse(JSON.stringify(o));
+function presetCfg(s, name) { const d = defaultPreset(infoOf(s)); if (!name || name === 'default' || !s.presets[name]) return d; return { ...d, ...clone(s.presets[name]) }; }
+const activeCfg = s => presetCfg(s, s.presets[s.active] ? s.active : 'default');
+function antList(txt, max = 64) { return [...new Set(String(txt).split(/[\s,，;]+/).map(Number).filter(n => n > 0 && n <= max))].sort((a, b) => a - b); }
+function gpiTriggers(c) { const g = c.gpi || {}; let start = null, stop = null; for (const [p, v] of Object.entries(g)) { if (v.start) start = { port: +p, level: v.startLvl || 'high' }; if (v.stop) stop = { port: +p, level: v.stopLvl || 'low' }; } return { start, stop }; }
+function wire(s, ov = {}) {
+  const c = activeCfg(s), i = infoOf(s) || {}, max = Math.max(i.antennaCount || 4, 4), on = antList(c.ants, 64);
+  const ids = [...new Set([...range(1, max), ...on])];
+  const rxv = r => r === '' || r == null ? '' : +r;
+  return {
+    antennas: ids.map(id => { const p = c.per[id] || {}; return { id, enabled: on.includes(id), txDbm: ov.power != null ? +ov.power : +(p.tx ?? c.power), rxDbm: c.maxSens && p.rx == null ? rxv(rxList(i)[0]) : rxv(p.rx ?? c.rx) }; }),
+    mode: +c.mode, session: +c.session, searchMode: ov.searchMode != null ? ov.searchMode : +c.search, tagPopulation: +c.pop || 32, fastId: !!c.fastId, phase: !!c.phase, doppler: !!c.doppler,
+    filters: (c.filters || []).filter(f => clean(f.mask)).map(f => ({ bank: f.bank, pointer: +f.pointer || 0, mask: clean(f.mask), bits: f.bits === '' || f.bits == null ? '' : +f.bits, match: f.match, miss: f.miss })),
+    gpi: ov.gpi ? gpiTriggers(c) : null, ldc: c.ldc && c.ldc.enabled ? c.ldc : null, quiet: !!ov.quiet,
+  };
+}
+
+let viewP = 'default', draft = null, dirty = false;
+function openCfg(id) { cfgSrc = id; const s = srcById(id); viewP = s.presets[s.active] ? s.active : 'default'; loadDraft(); show('dscfg'); tab('inv'); }
+function loadDraft() { const s = srcById(cfgSrc); draft = presetCfg(s, viewP); dirty = false; fillCfg(); }
+function renderCfgHead() {
+  const s = srcById(cfgSrc); if (!s) return; const i = infoOf(s) || {}, r = rt(s.id);
+  $('#dc-head').innerHTML = [['主机名', s.iface === 'sim' ? '模拟器' : s.host], ['接口', IFN[s.iface]], ['型号', i.model || '—'], ['昵称', nameOf(s)], ['区域', i.region || '—'], ['状态', r.connected ? (r.running ? '盘点中' : '已连接') : r.err ? '不可达' : '未连接']].map(([k, v]) => `<span>${k}: <b>${esc(v)}</b></span>`).join('');
+  $('#dc-info').innerHTML = infoKv(s);
+}
+function opts(list, val, fmt = v => v) { return list.map(v => `<option value="${v}" ${+v === +val ? 'selected' : ''}>${fmt(v)}</option>`).join(''); }
+function fillCfg() {
+  const s = srcById(cfgSrc), i = infoOf(s) || {}, c = draft, tx = txList(i), rx = rxList(i);
+  renderCfgHead();
+  const names = ['default', ...Object.keys(s.presets)], act = s.presets[s.active] ? s.active : 'default';
+  $('#dc-preset').innerHTML = names.map(n => `<option value="${esc(n)}" ${n === viewP ? 'selected' : ''} ${n === act ? 'class="act" style="font-weight:700"' : ''}>${esc(n)}${n === act ? '（当前）' : ''}</option>`).join('');
+  $('#dc-del').disabled = viewP === 'default';
+  $('#dc-ants').value = c.ants; $('#dc-hub').textContent = (i.antennaCount || 0) > 4 && /R[47]\d0|R700|R420/.test(i.model || '') ? 'Antenna Hub' : '';
+  const ml = modesOf(i); if (!ml.some(m => +m.id === +c.mode)) ml.push({ id: c.mode, label: `${c.mode} - 自定义` });
+  $('#dc-mode').innerHTML = ml.map(m => `<option value="${m.id}" ${+m.id === +c.mode ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+  $('#dc-search').value = c.search; $('#dc-search').disabled = s.iface === 'llrp' && i.impinjExtensions === false;
+  $('#dc-fastid').checked = !!c.fastId; $('#dc-pop').value = c.pop; $('#dc-ses').value = c.session; $('#dc-phase').checked = !!c.phase; $('#dc-dop').checked = !!c.doppler;
+  $('#dc-dop').disabled = i.supportsDoppler === false;
+  $('#dc-pwr').innerHTML = opts(tx, c.power, v => v.toFixed(2)); $('#dc-rx').innerHTML = opts(rx, c.rx); $('#dc-maxs').checked = !!c.maxSens; $('#dc-rx').disabled = !!c.maxSens;
+  const n = Math.max(i.antennaCount || 4, ...antList(c.ants));
+  $('#dc-antTbl').innerHTML = '<b>天线</b><b>发射功率 (dBm)</b><b>接收灵敏度 (dBm)</b>' + range(1, n).map(a => { const p = c.per[a] || {}; return `<span>天线 ${a}</span><select data-a="${a}" data-k="tx">${opts(tx, p.tx ?? c.power, v => v.toFixed(2))}</select><select data-a="${a}" data-k="rx" ${c.maxSens && p.rx == null ? 'disabled' : ''}>${opts(rx, p.rx ?? (c.maxSens ? rx[0] : c.rx))}</select>`; }).join('');
+  const gp = i.gpi || 0;
+  $('#dc-gpi').innerHTML = gp ? '<tr><th>GPI 端口</th><th>启动</th><th>电平</th><th>停止</th><th>电平</th></tr>' + range(1, gp).map(p => { const g = (c.gpi || {})[p] || {}; return `<tr data-p="${p}"><td>${p}</td><td><input type="checkbox" data-k="start" ${g.start ? 'checked' : ''} aria-label="GPI ${p} 启动"></td><td><select data-k="startLvl"><option value="low">低</option><option value="high" ${g.startLvl !== 'low' ? 'selected' : ''}>高</option></select></td><td><input type="checkbox" data-k="stop" ${g.stop ? 'checked' : ''} aria-label="GPI ${p} 停止"></td><td><select data-k="stopLvl"><option value="low" ${g.stopLvl !== 'high' ? 'selected' : ''}>低</option><option value="high" ${g.stopLvl === 'high' ? 'selected' : ''}>高</option></select></td></tr>`; }).join('') : '';
+  $('#dc-gpinote').textContent = gp ? 'GPI 触发仅在盘点展示的“GPI 触发”运行场景中生效。' : (s.iface === 'rest' ? 'IoT 接口暂不支持 GPI 触发。' : '该设备未报告 GPI 端口。');
+  renderFilters();
+  $('#dc-ldc').checked = !!(c.ldc && c.ldc.enabled); $('#dc-ldcE').value = c.ldc ? c.ldc.emptyTimeout : 500; $('#dc-ldcP').value = c.ldc ? c.ldc.pingInterval : 200;
+  [...$$('#dc-ldc,#dc-ldcE,#dc-ldcP')].forEach(e => e.disabled = s.iface === 'rest');
+  // diagnostics
+  const go = i.gpo || 0;
+  $('#dc-gpo').innerHTML = go && rt(s.id).connected ? range(1, go).map(p => `<label><span class="sw"><input type="checkbox" data-gpo="${p}"><span></span></span>GPO ${p}</label>`).join('') : `<span class="hint">${rt(s.id).connected ? '该设备没有可控制的 GPO 端口' : '连接数据源后可控制 GPO'}</span>`;
+  $('#dc-simgpiP').hidden = s.iface !== 'sim';
+  $('#dc-simgpi').innerHTML = range(1, gp || 4).map(p => `<label><span class="sw"><input type="checkbox" data-gpi="${p}"><span></span></span>GPI ${p}</label>`).join('');
+  validateGpi();
+}
+const ACTS = [['select', '选择 (Select)'], ['nothing', '无动作 (Do Nothing)'], ['unselect', '取消选择 (Unselect)']];
+function renderFilters() {
+  const fs = draft.filters || [];
+  $('#dc-flts').innerHTML = fs.map((f, k) => { const bad = f.match === f.miss; const auto = clean(f.mask).length * 4;
+    return `<div class="flt" data-f="${k}"><h5>过滤器 ${k + 1}<span class="sp"></span><button class="btn sm" data-rm="${k}">移除</button></h5>
+      <label class="row"><span>掩码（十六进制）:</span><input type="text" class="mono" data-k="mask" value="${esc(f.mask)}" spellcheck="false" placeholder="例如 E280"></label>
+      <label class="row"><span>位长度:</span><input type="number" data-k="bits" min="0" max="${auto}" value="${f.bits === '' || f.bits == null ? auto : f.bits}"></label>
+      <label class="row"><span>偏移（位）:</span><input type="number" data-k="pointer" min="0" value="${f.pointer}"></label>
+      <label class="row"><span>存储区:</span><select data-k="bank">${[['epc', 'EPC'], ['tid', 'TID'], ['user', 'User'], ['reserved', 'Reserved']].map(([v, l]) => `<option value="${v}" ${f.bank === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="row"><span>匹配动作:</span><select data-k="match" class="${bad ? 'inv' : ''}">${ACTS.map(([v, l]) => `<option value="${v}" ${f.match === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="row"><span>不匹配动作:</span><select data-k="miss" class="${bad ? 'inv' : ''}">${ACTS.map(([v, l]) => `<option value="${v}" ${f.miss === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${bad ? '<div class="note" style="color:var(--err)">匹配与不匹配动作不能相同</div>' : ''}</div>`; }).join('') || '<div class="hint" style="margin-bottom:6px">未配置过滤器：盘点所有标签。</div>';
+  $('#dc-fadd').disabled = fs.length >= 5;
+}
+function readCfgForm() {
+  const c = draft;
+  c.ants = $('#dc-ants').value; c.mode = +$('#dc-mode').value; c.search = +$('#dc-search').value; c.fastId = $('#dc-fastid').checked; c.pop = +$('#dc-pop').value || 32; c.session = +$('#dc-ses').value;
+  c.phase = $('#dc-phase').checked; c.doppler = $('#dc-dop').checked; c.power = +$('#dc-pwr').value; c.rx = +$('#dc-rx').value; c.maxSens = $('#dc-maxs').checked;
+  c.ldc = { enabled: $('#dc-ldc').checked, emptyTimeout: +$('#dc-ldcE').value || 500, pingInterval: +$('#dc-ldcP').value || 200 };
+}
+function validateGpi() { let bad = false; for (const tr of $$('#dc-gpi tr[data-p]')) { const g = draft.gpi[tr.dataset.p] || {}; const b = g.start && g.stop && (g.startLvl || 'high') === (g.stopLvl || 'low'); tr.classList.toggle('bad', !!b); bad = bad || b; } $('#dc-gpi').classList.toggle('bad', !!bad); return !bad; }
+$('#dc-inv').addEventListener('change', e => {
+  const t = e.target; dirty = true;
+  if (t.closest('#dc-antTbl')) { const a = t.dataset.a; draft.per[a] = { ...(draft.per[a] || {}), [t.dataset.k]: +t.value }; return; }
+  if (t.closest('#dc-gpi')) { const p = t.closest('tr').dataset.p, k = t.dataset.k; draft.gpi = draft.gpi || {};
+    if ((k === 'start' || k === 'stop') && t.checked) for (const q of Object.keys(draft.gpi)) if (q !== p && draft.gpi[q]) draft.gpi[q][k] = false;
+    draft.gpi[p] = { startLvl: 'high', stopLvl: 'low', ...(draft.gpi[p] || {}), [k]: t.type === 'checkbox' ? t.checked : t.value }; fillCfg(); return; }
+  if (t.closest('.flt')) { const f = draft.filters[+t.closest('.flt').dataset.f], k = t.dataset.k; f[k] = t.value;
+    if (k === 'mask') { f.mask = clean(t.value); f.bits = ''; } if (k === 'bits') f.bits = Math.min(+t.value, clean(f.mask).length * 4); if (k === 'pointer') f.pointer = +t.value || 0; renderFilters(); return; }
+  if (t.id === 'dc-preset') return;
+  readCfgForm();
+  if (t.id === 'dc-pwr' || t.id === 'dc-rx' || t.id === 'dc-maxs') { draft.per = {}; fillCfg(); }
+});
+$('#dc-flts').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (!b) return; draft.filters.splice(+b.dataset.rm, 1); dirty = true; renderFilters(); });
+$('#dc-fadd').onclick = () => { draft.filters = draft.filters || []; if (draft.filters.length >= 5) return; draft.filters.push({ mask: '', bits: '', pointer: 32, bank: 'epc', match: 'select', miss: 'unselect' }); dirty = true; renderFilters(); };
+$('#dc-aall').onclick = () => { const i = infoOf(srcById(cfgSrc)) || {}; $('#dc-ants').value = range(1, i.antennaCount || 4).join(', '); readCfgForm(); dirty = true; fillCfg(); };
+$('#dc-aclr').onclick = () => { $('#dc-ants').value = ''; readCfgForm(); dirty = true; };
+$('#dc-indT').onclick = () => { const p = $('#dc-ind'); p.hidden = !p.hidden; $('#dc-indT .car').textContent = p.hidden ? '▼' : '▲'; };
+$('#dc-preset').onchange = async e => { if (dirty && !confirm('放弃未保存的修改？')) { e.target.value = viewP; return; } viewP = e.target.value; loadDraft(); };
+function validName(s) { return v => !v ? '请输入名称' : v === 'default' || s.presets[v] ? '该名称已存在' : ''; }
+async function savePreset() {
+  const s = srcById(cfgSrc); readCfgForm();
+  if (!antList(draft.ants).length) return toast('请至少填写一个天线');
+  if (!validateGpi()) return toast('GPI 配置错误：同一端口的启动与停止电平不能相同');
+  if ((draft.filters || []).some(f => f.match === f.miss)) return toast('过滤器的匹配与不匹配动作不能相同');
+  if ((draft.filters || []).some(f => !clean(f.mask))) return toast('请填写过滤器掩码，或移除空过滤器');
+  let name = viewP;
+  if (viewP === 'default' && dirty) { name = await ask('保存为新预设', '预设名称:', uniqueP(s, 'copy_of_default'), validName(s)); if (!name) return; }
+  if (name !== 'default') s.presets[name] = clone(draft);
+  s.active = name; viewP = name; saveSources(); dirty = false; loadDraft();
+  toast(`已保存，“${name}”为当前预设` + (run && run.parts.includes(s.id) ? '，将在下次运行时生效' : ''));
+}
+const uniqueP = (s, b) => { let n = b, i = 2; while (s.presets[n]) n = `${b}_${i++}`; return n; };
+$('#dc-save').onclick = savePreset;
+$('#dc-cancel').onclick = () => { dirty = false; show('inventory'); };
+$('#dc-reset').onclick = () => { loadDraft(); toast('已恢复为上次保存的设置'); };
+$('#dc-del').onclick = () => { const s = srcById(cfgSrc); if (viewP === 'default' || !confirm(`删除预设“${viewP}”？`)) return; delete s.presets[viewP]; if (s.active === viewP) s.active = 'default'; viewP = s.active; saveSources(); loadDraft(); };
+$('#dc-copy').onclick = async () => { const s = srcById(cfgSrc); readCfgForm(); const n = await ask('复制预设', '新预设名称:', uniqueP(s, 'copy_of_' + viewP), validName(s)); if (!n) return; s.presets[n] = clone(draft); viewP = n; saveSources(); loadDraft(); };
+$('#dc-export').onclick = () => { const s = srcById(cfgSrc); readCfgForm(); dl(`${nameOf(s)}_${viewP}.json`.replace(/[\\/:*?"<>|\s]+/g, '_'), JSON.stringify({ app: 'TagScope', version: VERSION, name: viewP, preset: draft }, null, 2), 'application/json'); };
+$('#dc-import').onclick = () => $('#dc-file').click();
+$('#dc-file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const s = srcById(cfgSrc);
+  try { const j = JSON.parse(await f.text()), p = j.preset || j; if (!p || typeof p !== 'object' || !('ants' in p)) throw new Error('不是 TagScope 预设文件');
+    const n = await ask('导入预设', '预设名称:', uniqueP(s, j.name && j.name !== 'default' ? j.name : f.name.replace(/\.json$/i, '')), validName(s)); if (!n) return;
+    s.presets[n] = { ...defaultPreset(infoOf(s)), ...p }; viewP = n; saveSources(); loadDraft(); toast('已导入预设 ' + n); } catch (err) { toast('导入失败：' + err.message); } };
+$('#dc-refresh').onclick = async () => { const s = srcById(cfgSrc); if (!s.enabled) return toast('请先启用该数据源'); await disconnectSource(s); await connectSource(s); readCfgForm(); fillCfg(); if (!rt(s.id).err) toast('已刷新设备能力'); };
+function tab(t) { $$('.tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t))); $('#dc-inv').hidden = t !== 'inv'; $('#dc-diag').hidden = t !== 'diag'; $('#dc-foot').hidden = t !== 'inv'; if (t === 'diag') fillCfg(); }
+$$('.tabs [data-tab]').forEach(b => b.onclick = () => tab(b.dataset.tab));
+$('#dc-gpo').addEventListener('change', async e => { const p = e.target.dataset.gpo; if (!p) return; const s = srcById(cfgSrc);
+  try { await backendOf(s).api('gpo', { id: s.id, port: +p, state: e.target.checked }); addLog({ id: s.id, level: 'info', msg: `GPO ${p} → ${e.target.checked ? '高' : '低'}`, ts: Date.now() }); } catch (err) { e.target.checked = !e.target.checked; toast(err.message); } });
+$('#dc-simgpi').addEventListener('change', async e => { const p = e.target.dataset.gpi; if (!p) return; const s = srcById(cfgSrc);
+  try { await backendOf(s).api('gpi', { id: s.id, port: +p, level: e.target.checked }); } catch (err) { e.target.checked = !e.target.checked; toast(err.message); } });
+
