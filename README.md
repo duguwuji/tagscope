@@ -2,6 +2,18 @@
 
 TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界面和工作流程参照 Impinj ItemTest 2.x。它可以连接真实读写器，也可以用模拟器演示。项目不依赖任何 npm 包，只需要 Node.js 18 或更高版本。
 
+## 在线网页版
+
+地址：**https://tagscope.hillleng2478.workers.dev**（部署在 Cloudflare Workers）
+
+- **只体验界面**：添加数据源时选择“模拟器”，模拟器直接在浏览器中运行，不需要安装任何东西。
+- **连接真实读写器**：在与读写器同一局域网的电脑上运行 `node server.js`，然后在网页版添加 LLRP 或 IoT 接口数据源，“桥接服务地址”填 `http://localhost:8080`（默认值）。
+- Chrome / Edge 第一次访问本机桥接服务时，会询问是否允许该网站访问本地网络 / 本设备上的应用，请选择“允许”。Safari 会阻止 https 页面访问 http 本机服务，请使用 Chrome、Edge 或 Firefox，或直接打开 http://localhost:8080 。
+- 标签数据只在浏览器和本机桥接服务之间传输，不经过 Cloudflare。
+- 桥接服务只接受本机页面和网页版的跨域请求。需要其他来源时使用 `--allow-origin=https://example.com`（多个用逗号分隔）。
+
+重新部署：`npx wrangler deploy`（配置见 `wrangler.toml`，入口 `worker.js`）。
+
 ## 为什么需要本地服务
 
 浏览器不能直接建立 TCP 连接，所以无法访问读写器的 LLRP 端口（5084）。`server.js` 是一个很小的本地桥接服务，作用如下：
@@ -27,6 +39,7 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 
 - `--host=0.0.0.0`：允许局域网中的其他电脑访问。默认只监听本机。
 - `--verbose`：在控制台打印 LLRP 协议细节。
+- `--allow-origin=<来源>`：允许其他网页来源调用桥接服务。
 
 ## 驱动
 
