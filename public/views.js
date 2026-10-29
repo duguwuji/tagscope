@@ -1,6 +1,7 @@
 // TagScope — Copyright © 2026 Hill (Hill@iotrfid.top). All rights reserved.
 // Views: inventory / settings / TOI / tag memory / logging / navigation (loaded after app.js)
 'use strict';
+const _T = s => (typeof T === 'function' ? T(s) : s);
 
 /* =====================================================================
    Inventory showcase
@@ -214,7 +215,7 @@ function drawPlot() {
   g.beginPath(); g.moveTo(L, T); g.lineTo(L, T + ph); g.lineTo(L + pw, T + ph); g.stroke();
   for (let i = 0; i <= 10; i++) { const x = L + pw * i / 10; g.fillText(String(Math.round(tmax * i / 10)), x - 4, T + ph + 12); }
   for (let i = 0; i <= 4; i++) { const y = T + ph - ph * i / 4; g.fillText(String(Math.round(ymax * i / 4)), 4, y + 3); g.strokeStyle = '#EEE'; g.beginPath(); g.moveTo(L + 1, y); g.lineTo(L + pw, y); g.stroke(); }
-  g.fillText('时间（秒）', L + pw / 2 - 20, h - 1);
+  g.fillText(_T('时间（秒）'), L + pw / 2 - 20, h - 1);
   g.save(); g.translate(10, T + ph / 2 + 30); g.rotate(-Math.PI / 2); g.restore();
   g.strokeStyle = '#1E88C8'; g.lineWidth = 1.6; g.beginPath(); let py = T + ph;
   g.moveTo(L, py); for (const [t, n] of plotPts) { const x = L + pw * t / tmax, y = T + ph - ph * n / ymax; g.lineTo(x, py); g.lineTo(x, y); py = y; } g.stroke();
@@ -428,7 +429,7 @@ $('#tm-kill').onclick = async () => { const k = clean($('#tm-kpwd').value); if (
    ===================================================================== */
 const LOG_HDR = 'Timestamp,EPC,TID,Antenna,RSSI,Frequency,Hostname,PhaseAngle,DopplerFrequency,Power,ReadCount';
 function logHeader(r, extra) {
-  const lines = [`# TagScope ${VERSION} inventory log`, `# Run started: ${r.startedAt.toISOString()}  (${r.startedAt.toString()})`, `# Scenario: ${scenText()}${extra ? '  ' + extra : ''}`];
+  const lines = [`# TagScope ${VERSION} inventory log`, `# Run started: ${r.startedAt.toISOString()}  (${r.startedAt.toString()})`, `# Scenario: ${_T(scenText())}${extra ? '  ' + extra : ''}`];
   for (const id of r.parts) { const s = srcById(id); if (!s) continue; const i = infoOf(s) || {}, c = activeCfg(s);
     lines.push(`# Reader: ${nameOf(s)} | host=${s.iface === 'sim' ? 'simulator' : s.host} | interface=${IFN[s.iface]} | model=${i.model || ''} | firmware=${i.firmware || ''} | preset=${s.presets[s.active] ? s.active : 'default'} | antennas=${c.ants} | mode=${c.mode} | session=${c.session} | search=${c.search} | power=${r.power ?? c.power} | fastId=${c.fastId}`); }
   return lines;
@@ -440,7 +441,7 @@ function flushRunLog(i) {
   if (store.get('logUniq', false)) dl(`${pre}_${st}${suf}_unique.csv`, uniqueCsv());
   run.runRows = [];
 }
-function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [cols.map(k => CK[k].l).join(','), ...rowsSorted().map(t => cols.map(k => { const v = cellStr(t, k); return /[,"]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(','))].join('\n'); }
+function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [cols.map(k => _T(CK[k].l)).join(','), ...rowsSorted().map(t => cols.map(k => { const v = cellStr(t, k); return /[,"]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(','))].join('\n'); }
 $('#lg-on').onchange = e => store.set('logOn', e.target.checked);
 $('#lg-uniq').onchange = e => store.set('logUniq', e.target.checked);
 $('#lg-prefix').oninput = e => store.set('logPrefix', e.target.value);
