@@ -7,326 +7,419 @@
 <meta name="copyright" content="© 2026 Hill (Hill@iotrfid.top)">
 <title>TagScope</title>
 <style>
-:root{--side:#2B3038;--side2:#353B45;--side-tx:#E9EBEE;--side-mu:#A3AAB5;--accent:#2783DE;--accent-soft:#E5F2FC;--tx:#2C2C2B;--mu:#6F6C67;--bd:#DCDAD6;--bg:#FFFFFF;--bar:#F4F4F3;--hd:#EDECEA;--ok:#2F8A5B;--warn:#B9651F;--err:#D4483B;--mono:Consolas,Menlo,monospace}
+:root{--title:#2F5D8C;--navy:#1F4E79;--sel:#1E63A8;--teal:#1A9E9A;--tx:#1E1E1E;--mu:#6B6B6B;--bd:#C9CED6;--bd2:#E3E6EA;--bg:#fff;--pg:#F3F5F8;--err:#C62828;--ok:#2E7D32;--mono:Consolas,"Cascadia Mono",Menlo,"Courier New",monospace}
 *{box-sizing:border-box}[hidden]{display:none!important}
-html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font:13px/1.4 "Segoe UI",-apple-system,"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
-button,input,select{font:inherit;color:inherit}
-.app{display:grid;grid-template-columns:248px 1fr;grid-template-rows:1fr 28px;height:100vh}
-/* ---------- sidebar ---------- */
-nav{grid-row:1;background:var(--side);color:var(--side-tx);display:flex;flex-direction:column;overflow:auto;min-height:0}
-.logo{display:flex;align-items:center;gap:10px;padding:16px 16px 14px;font-size:17px;font-weight:600;letter-spacing:.2px}
-.sec{padding:10px 0 6px;border-top:1px solid rgba(255,255,255,.08)}
-.sec-h{display:flex;align-items:center;justify-content:space-between;padding:0 10px 4px 16px;font-size:11.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--side-mu)}
-.ib{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--side-mu);cursor:pointer;display:inline-grid;place-items:center}
-.ib:hover:not(:disabled){background:var(--side2);color:#fff}.ib:disabled{opacity:.35;cursor:not-allowed}
-.nav-i{display:flex;align-items:center;gap:10px;width:100%;padding:8px 16px;border:0;background:transparent;color:var(--side-tx);cursor:pointer;text-align:left;font-size:13.5px;min-height:36px}
-.nav-i:hover:not(:disabled){background:var(--side2)}
-.nav-i[aria-current=page]{background:var(--side2);box-shadow:inset 3px 0 0 var(--accent)}
-.nav-i:disabled{color:#7D8590;cursor:not-allowed}
-.nav-i small{margin-left:auto;font-size:11px;color:var(--side-mu)}
-.ds{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 16px;min-height:40px}
-.ds .nm{flex:1;min-width:0;cursor:pointer}.ds .nm b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds .nm span{font-size:11.5px;color:var(--side-mu)}
-.ds-empty{padding:4px 16px 8px;color:var(--side-mu);font-size:12.5px}
-.sw{position:relative;width:34px;height:18px;flex:none}.sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
-.sw span{position:absolute;inset:0;border-radius:9px;background:#5B626D;transition:.15s}.sw span::after{content:"";position:absolute;width:14px;height:14px;left:2px;top:2px;border-radius:50%;background:#fff;transition:.15s}
-.sw input:checked+span{background:var(--accent)}.sw input:checked+span::after{left:18px}.sw input:focus-visible+span{outline:2px solid #fff}
-.sw.busy span{background:#B98A3B}
-.side-foot{margin-top:auto;padding:12px 16px;font-size:11.5px;color:var(--side-mu);border-top:1px solid rgba(255,255,255,.08)}
-.side-foot a{color:var(--side-mu)}
-/* ---------- main ---------- */
-main{grid-row:1;display:flex;flex-direction:column;min-width:0;min-height:0}
-.view{display:flex;flex-direction:column;flex:1;min-height:0}
-.vh{display:flex;align-items:center;gap:6px;padding:10px 16px;border-bottom:1px solid var(--bd);background:var(--bar);flex-wrap:wrap}
-.vh h1{font-size:18px;font-weight:600;margin:0 14px 0 2px}
-.cb{width:36px;height:36px;border-radius:50%;border:1.5px solid currentColor;background:transparent;cursor:pointer;display:inline-grid;place-items:center;color:var(--tx)}
-.cb.play{color:var(--ok)}.cb.stop{color:var(--err)}
-.cb:disabled{color:#B9B7B2;cursor:not-allowed}
-.tb{height:32px;padding:0 10px;border:1px solid transparent;border-radius:6px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--tx)}
-.tb:hover:not(:disabled){background:var(--hd);border-color:var(--bd)}.tb[aria-pressed=true]{background:var(--accent-soft);border-color:#B9D9F5}
-.tb:disabled{opacity:.45;cursor:not-allowed}
-.vsep{width:1px;height:24px;background:var(--bd);margin:0 6px}
-.counters{margin-left:auto;display:flex;gap:22px}
-.ct{text-align:right}.ct b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}.ct span{font-size:11.5px;color:var(--mu)}
-.toi-bar{padding:6px 16px;background:#FFF6E8;border-bottom:1px solid #F0D9B5;font-size:12.5px;display:flex;gap:16px;align-items:center}
-.grid-wrap{flex:1;overflow:auto;min-height:0}
-table.g{border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums;min-width:100%}
-table.g th{position:sticky;top:0;z-index:1;background:var(--hd);border-bottom:1px solid var(--bd);border-right:1px solid var(--bd);padding:6px 8px;text-align:left;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none}
-table.g th[aria-sort=ascending]::after{content:" ▲";font-size:9px}table.g th[aria-sort=descending]::after{content:" ▼";font-size:9px}
-table.g td{padding:4px 8px;border-bottom:1px solid #ECEBE8;border-right:1px solid #F1F0EE;white-space:nowrap}
-table.g td.m{font-family:var(--mono)}table.g td.n{text-align:right}
-table.g tbody tr{cursor:default}table.g tbody tr.sel td{background:var(--accent-soft)!important}
-table.g tr.miss td{color:var(--mu);font-style:italic}
-.empty{padding:48px 16px;text-align:center;color:var(--mu)}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px;padding:12px 16px}
-.card{border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:12px;cursor:default}
-.card .e{font-family:var(--mono);font-size:13px;font-weight:600;overflow-wrap:anywhere}
-.card .r{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--mu);margin-top:4px}.card .r b{color:var(--tx);font-weight:500}
-.card.sel{outline:2px solid var(--accent)}
-/* memory showcase */
-.pad{padding:16px 20px;overflow:auto;flex:1}
-.fr{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px}
-label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mu)}
-input[type=text],input[type=number],input[type=password],select{height:32px;padding:0 8px;border:1px solid #C9C7C2;border-radius:4px;background:#fff;min-width:0}
-input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+html,body{margin:0;height:100%;overflow:hidden;background:#fff;color:var(--tx);font:12.5px/1.4 "Segoe UI",-apple-system,"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
 .mono{font-family:var(--mono)}
-.btn{height:32px;padding:0 16px;border:1px solid #C9C7C2;border-radius:4px;background:#FAFAF9;cursor:pointer;white-space:nowrap}
-.btn:hover:not(:disabled){background:var(--hd)}.btn:disabled{opacity:.45;cursor:not-allowed}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}.btn.pri:hover:not(:disabled){filter:brightness(.94);background:var(--accent)}
-.btn.dng{color:var(--err)}
-.mem{display:grid;grid-template-columns:auto auto 1fr;gap:6px 14px;align-items:center;margin:8px 0 16px;font-family:var(--mono);font-size:13px}
-.mem .wl{color:var(--mu);font-size:11.5px;text-align:right}
-.mem .ws{display:flex;gap:4px;flex-wrap:wrap}
-.mem input{width:58px;height:30px;text-align:center;font-family:var(--mono);text-transform:uppercase;padding:0 4px}
-.mem input.x{color:var(--err)}.mem input.c{background:#F4F4F3;color:var(--mu)}
-.mem .asc{color:var(--mu);white-space:pre}
-.res{padding:8px 10px;border-radius:4px;background:var(--bar);font-family:var(--mono);font-size:12.5px;min-height:34px;overflow-wrap:anywhere}
-.res.ok{background:#E8F1EC;color:var(--ok)}.res.bad{background:#FCE9E7;color:var(--err)}
-details{border:1px solid var(--bd);border-radius:6px;margin-top:16px}details>summary{padding:8px 12px;cursor:pointer;font-weight:600}details>div{padding:4px 12px 12px}
-h2.s{font-size:14px;margin:20px 0 8px;font-weight:600}h2.s:first-child{margin-top:0}
-.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;min-height:26px;color:var(--tx);font-size:13px}.chk input{margin:0;width:15px;height:15px;accent-color:var(--accent)}
-.cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:2px 12px;max-width:760px}
-.note{color:var(--mu);font-size:12px;margin:6px 0}
-/* status bar */
-footer{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 10px;background:#E9E8E6;border-top:1px solid var(--bd);font-size:12px;color:#55524D;min-width:0}
-footer .dot{width:8px;height:8px;border-radius:50%;background:#A9A6A0;display:inline-block;margin-right:6px}
-footer .dot.on{background:var(--ok)}footer .dot.run{background:var(--accent)}
-footer .msg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-footer .msg.error{color:var(--err)}footer .msg.warn{color:var(--warn)}
-footer button{border:0;background:transparent;cursor:pointer;font-size:12px;color:#55524D;height:24px;padding:0 6px;border-radius:4px}footer button:hover{background:#DAD8D5}
-.sim-tag{background:#FBEBDE;color:var(--warn);padding:1px 8px;border-radius:10px;font-weight:600}
-/* log drawer */
-.drawer{position:fixed;left:248px;right:0;bottom:28px;height:240px;background:#fff;border-top:1px solid var(--bd);box-shadow:0 -4px 12px rgba(0,0,0,.06);display:flex;flex-direction:column;z-index:15}
-.drawer .dh{display:flex;align-items:center;gap:12px;padding:4px 12px;border-bottom:1px solid var(--bd);background:var(--bar);font-weight:600}
-.drawer .dh span{flex:1}
-.log{flex:1;overflow:auto;font-family:var(--mono);font-size:12px;padding:6px 12px;line-height:1.55}
-.log div{white-space:pre-wrap;overflow-wrap:anywhere}.log .t{color:var(--mu)}.log .warn{color:var(--warn)}.log .error{color:var(--err)}.log .debug{color:#8E8B85}
-/* modal */
-.ov{position:fixed;inset:0;background:rgba(20,22,26,.45);display:grid;place-items:center;z-index:30;padding:16px}
-.dlg{background:#fff;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:min(620px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column}
-.dlg>h3{margin:0;padding:14px 18px;font-size:16px;font-weight:600;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px}
-.dlg>h3 span{flex:1}
-.dlg .bd{padding:16px 18px;overflow:auto}
-.dlg .ft{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--bd);background:var(--bar);border-radius:0 0 8px 8px}
-.dlg .ft .l{margin-right:auto}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}.g2 .s2{grid-column:span 2}
-.tabs{display:flex;border-bottom:1px solid var(--bd);margin:-4px 0 14px}
-.tabs button{border:0;background:transparent;padding:8px 14px;cursor:pointer;border-bottom:2px solid transparent;color:var(--mu);font-weight:600}
-.tabs button[aria-selected=true]{color:var(--tx);border-color:var(--accent)}
-.ants{border-collapse:collapse;width:100%}.ants th{font-size:12px;color:var(--mu);font-weight:500;text-align:left;padding:0 6px 4px}.ants td{padding:2px 6px}.ants input,.ants select{width:100%}
-/* menus */
-.menu{position:fixed;z-index:40;background:#fff;border:1px solid var(--bd);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:4px 0;min-width:190px;max-height:70vh;overflow:auto}
-.menu button,.menu label{display:flex;align-items:center;gap:8px;width:100%;padding:6px 14px;border:0;background:transparent;text-align:left;cursor:pointer;font-size:13px}
-.menu button:hover,.menu label:hover{background:var(--accent-soft)}
-.menu hr{border:0;border-top:1px solid var(--bd);margin:4px 0}
-.toast{position:fixed;right:20px;bottom:44px;max-width:440px;padding:10px 14px;border-radius:6px;background:var(--err);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.2);opacity:0;transform:translateY(6px);transition:.2s;pointer-events:none;z-index:50}
-.toast.show{opacity:1;transform:none}
-.offline{padding:10px 16px;background:#FBEBDE;color:#8A4A14;border-bottom:1px solid #F0D2B5}
-@media (max-width:820px){html,body{overflow:auto;height:auto}.app{grid-template-columns:1fr;grid-template-rows:auto auto 28px;height:auto;min-height:100vh}nav{grid-row:1}main{grid-row:2;min-height:70vh}footer{grid-column:1}.drawer{left:0}.counters{margin-left:0;width:100%;justify-content:space-between;order:9}.ct{text-align:left}.g2{grid-template-columns:1fr}.g2 .s2{grid-column:auto}.app{grid-template-rows:auto auto auto}footer{flex-wrap:wrap;padding:6px 10px;gap:6px 12px}footer .msg{flex-basis:100%;order:5}footer button{white-space:nowrap}.sb-copy{display:none}}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.titlebar{height:26px;background:var(--title);color:#fff;display:flex;align-items:center;padding:0 10px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase}
+.titlebar .sp{flex:1}.titlebar a{color:#DCE8F5;text-decoration:none;letter-spacing:.3px;text-transform:none}
+.app{display:grid;grid-template-columns:184px 1fr;height:calc(100vh - 26px)}
+/* ---------- sidebar ---------- */
+aside{border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:auto;background:#fff}
+.logo{padding:14px 10px 12px;text-align:center;user-select:none}
+.logo .dots{display:block;height:14px}
+.logo b{display:block;font:700 21px/1 "Segoe UI",Arial,sans-serif;letter-spacing:2.5px;color:#3B3B3B}
+.sec{padding:4px 0 8px}
+.sh{display:flex;align-items:center;gap:6px;padding:4px 8px 2px 8px;font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.2px}
+.sh .sp{flex:1}
+.badge{min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--teal);color:#fff;font-size:10px;display:inline-grid;place-items:center;font-weight:600}
+.plus{width:17px;height:17px;border:1.4px solid #333;border-radius:50%;background:#fff;cursor:pointer;display:inline-grid;place-items:center;padding:0;line-height:1}
+.plus:hover{background:#E8F0F8}
+.ni{display:block;width:100%;text-align:left;border:0;background:transparent;padding:3px 8px;cursor:pointer;font-size:12px}
+.ni:hover:not(:disabled){background:#E6EEF7}
+.ni[aria-current=page]{background:var(--sel);color:#fff}
+.ni:disabled{color:#A8A8A8;cursor:default}
+.ds{display:flex;align-items:center;gap:6px;padding:2px 6px 2px 8px;min-height:22px;cursor:pointer;position:relative}
+.ds:hover{background:#E6EEF7}.ds[aria-current=page]{background:var(--sel);color:#fff}
+.ds .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.ds .x{visibility:hidden;border:0;background:none;cursor:pointer;color:inherit;padding:0 2px;font-size:13px;line-height:1}
+.ds:hover .x{visibility:visible}
+.ds.bad .nm{color:var(--err)}.ds[aria-current=page].bad .nm{color:#FFD5D5}
+.ds .retry{border:1px solid var(--err);color:var(--err);background:#fff;font-size:9.5px;padding:0 4px;cursor:pointer;border-radius:2px}
+.ds .st{width:6px;height:6px;border-radius:50%;background:#bbb;flex:none}.ds .st.on{background:#2EAD4B}.ds .st.run{background:#2EAD4B;box-shadow:0 0 0 2px rgba(46,173,75,.25)}.ds .st.err{background:var(--err)}
+.empty-s{padding:2px 8px;color:#8B8B8B;font-size:11.5px}
+.sw{position:relative;width:30px;height:15px;flex:none;display:inline-block}.sw input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+.sw span{position:absolute;inset:0;border-radius:8px;background:#fff;border:1.5px solid #333;transition:.12s}.sw span::after{content:"";position:absolute;width:9px;height:9px;left:1.5px;top:1.5px;border-radius:50%;background:#333;transition:.12s}
+.sw input:checked+span{background:var(--teal);border-color:var(--teal)}.sw input:checked+span::after{left:16px;background:#fff}
+.sw input:focus-visible+span{outline:2px solid var(--sel);outline-offset:1px}.sw input:disabled+span{opacity:.45}
+.sw.lg{width:38px;height:19px}.sw.lg span::after{width:12px;height:12px}.sw.lg input:checked+span::after{left:20px}
+.side-foot{margin-top:auto;padding:8px;font-size:10.5px;color:#8B8B8B;border-top:1px solid var(--bd2)}
+.side-foot a{color:#6B7C93}.side-foot button{border:0;background:none;color:#6B7C93;cursor:pointer;padding:0;text-decoration:underline;font-size:10.5px}
+/* ---------- main ---------- */
+main{display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.view{display:flex;flex-direction:column;flex:1;min-height:0}
+.sc-head{display:grid;grid-template-columns:48px 1fr 48px;align-items:center;padding:4px 6px 0;height:46px;flex:none}
+.play{width:30px;height:30px;border-radius:50%;border:2.4px solid #111;background:#fff;cursor:pointer;display:grid;place-items:center;padding:0}
+.play:disabled{opacity:.35;cursor:default}.play:hover:not(:disabled){background:#EEF3F8}
+.clock{text-align:center;font:300 25px/1 "Segoe UI",Arial,sans-serif;letter-spacing:.5px}
+.gear{justify-self:end;border:0;background:none;cursor:pointer;padding:4px;border-radius:4px}.gear:hover{background:#EEF3F8}
+.grid-wrap{flex:1;overflow:auto;min-height:0;border-top:1px solid var(--bd2);position:relative}
+table.g{border-collapse:separate;border-spacing:0;min-width:100%;font-size:11.5px}
+table.g th{position:sticky;top:0;background:#fff;font-weight:600;text-align:left;padding:3px 8px;border-bottom:1px solid var(--bd);border-right:1px solid var(--bd2);white-space:nowrap;cursor:pointer;user-select:none;z-index:1;font-size:11px}
+table.g th.drag{opacity:.4}table.g th.over{box-shadow:inset 2px 0 0 var(--sel)}
+table.g th .ar{color:#888;font-size:9px;margin-left:3px}
+table.g td{padding:1px 8px;white-space:nowrap;font-family:var(--mono);font-size:11.5px;border-bottom:1px solid #F0F0F0}
+table.g tbody tr.sel td{background:#CDE0F5!important}
+table.g td.toi{font-weight:600}
+table.g td.n{text-align:right}
+.tv td,.tv th{font-family:var(--mono)}table.g.tv{min-width:0}.tv td{padding-right:28px}.tv th{cursor:default}
+.tv tr.tot td{border-top:1px solid var(--bd);font-weight:600}
+.tv-grp th{border-bottom:0!important;text-align:center!important}
+.blank{padding:28px 20px;color:#7A7A7A;text-align:center}
+.blank b{color:#333}
+.plot{height:180px;flex:none;border-top:1px solid var(--bd2);position:relative;padding:4px 10px}
+.plot h4{margin:0;text-align:center;font-size:12px;font-weight:700;text-decoration:underline}
+.plot canvas{width:100%;height:150px;display:block}
+.toi-sum{flex:none;border-top:1px solid var(--bd2);padding:4px 8px;font-family:var(--mono);font-size:11.5px}
+.toi-sum table{border-collapse:collapse}.toi-sum th{font:600 11px "Segoe UI",sans-serif;text-align:left;padding:0 14px 0 0}.toi-sum td{padding:0 14px 0 0}
+.sc-foot{flex:none;display:flex;gap:12px;align-items:center;padding:3px 8px;border-top:1px solid var(--bd);font-size:11px;color:#333;background:#fff}
+.sc-foot .sp{flex:1}.sc-foot b{font-weight:400;font-family:var(--mono)}
+/* ---------- pages & panels ---------- */
+.page{flex:1;overflow:auto;background:#fff;padding:8px 10px 0;min-height:0}
+.page-foot{flex:none;display:flex;gap:10px;padding:8px 10px;border-top:1px solid var(--bd2);background:#fff}
+.page-foot .btn{flex:1}
+.pnl{border:1px solid #B7C3D1;margin:0 0 8px;background:#fff}
+.ph{background:var(--navy);color:#fff;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;padding:3px 8px;display:flex;align-items:center;gap:6px;user-select:none}
+.ph.tog{cursor:pointer}.ph .car{display:inline-grid;place-items:center;width:13px;height:13px;border:1px solid #fff;border-radius:50%;font-size:8px;line-height:1}
+.pb{padding:6px 8px}
+.sub{border:1px solid #B7C3D1;margin:4px 0}.sub>.ph{background:#2E5E8E}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;align-items:start}
+.cols3{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row{display:grid;grid-template-columns:minmax(120px,42%) 1fr;align-items:center;gap:6px;min-height:25px;padding:1px 0}
+.row>span:first-child{color:#333}
+.row.dis{opacity:.5}
+.row .inl{display:flex;gap:6px;align-items:center}
+input[type=text],input[type=number],input[type=password],select,textarea{border:1px solid #C3C8CF;border-radius:2px;padding:2px 6px;height:22px;background:#fff;min-width:0;width:100%;font-size:12px}
+textarea{height:auto;resize:vertical}
+select{padding:0 4px}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--sel);border-color:var(--sel)}
+input:disabled,select:disabled{background:#F3F3F3;color:#888}
+input.inv{border-color:var(--err);outline-color:var(--err);background:#FFF5F5}
+.chk{display:inline-flex;gap:6px;align-items:center;cursor:pointer;min-height:22px}
+.chk input{margin:0}
+.radio{display:flex;gap:6px;align-items:center;min-height:22px;cursor:pointer}
+.btn{border:1px solid #9AA5B1;background:#fff;padding:3px 12px;min-height:24px;cursor:pointer;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;border-radius:2px;font-weight:600;color:#333}
+.btn:hover:not(:disabled){background:#EDF2F7}.btn:disabled{opacity:.45;cursor:default}
+.btn.pri{background:var(--navy);border-color:var(--navy);color:#fff}.btn.pri:hover:not(:disabled){background:#173D60}
+.btn.sm{padding:1px 8px;min-height:20px;font-size:10px}
+.btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.note{font-size:11px;color:#6B6B6B;margin:3px 0}
+.hint{font-size:11px;color:var(--mu)}
+.hub{color:#2E7D32;font-size:11px;font-weight:600}
+/* data source pages */
+.ds-head{font-size:11px;color:#333;padding:0 0 4px;display:flex;flex-wrap:wrap;gap:4px 12px}.ds-head b{font-weight:600}
+.tabs{display:flex;gap:16px;align-items:baseline;margin:2px 0 6px}
+.tabs button{border:0;background:none;font:300 19px "Segoe UI",Arial,sans-serif;color:#A0A8B2;cursor:pointer;padding:0}
+.tabs button[aria-selected=true]{color:var(--navy)}
+.preset{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.preset select{width:220px}.preset .sp{flex:1}
+.preset option.act{font-weight:700}
+.gpi{width:100%;border-collapse:collapse;font-size:11px}.gpi th{font-weight:600;text-transform:uppercase;font-size:10px;padding:2px 4px;text-align:center}.gpi td{text-align:center;padding:2px 4px}.gpi select{width:70px}
+.gpi tr.bad td{background:#FFE3E3}
+.flt{border:1px solid var(--bd2);padding:6px;margin:0 0 6px;position:relative;background:#FAFBFD}
+.flt h5{margin:0 0 3px;font-size:11px;display:flex;align-items:center}.flt h5 .sp{flex:1}
+.ants{display:grid;grid-template-columns:auto 1fr 1fr;gap:3px 8px;align-items:center;font-size:11.5px}
+.ants b{font-weight:600;font-size:10.5px;text-transform:uppercase}
+.add-wrap{max-width:440px;margin:24px auto 30px;padding:0 10px}
+.add-wrap h2{font:600 17px "Segoe UI",Arial,sans-serif;margin:0 0 10px}
+.add-wrap p{color:#666;margin:0 0 14px;font-size:12px}
+.fld{margin:0 0 14px}.fld label{display:block;font-weight:600;margin-bottom:3px;font-size:12px}.fld label i{font-weight:400;color:#888;font-style:normal}
+.fld .err{color:#fff;background:var(--err);font-size:11px;padding:1px 6px;display:inline-block;margin-top:3px}
+.gpo{display:flex;gap:12px;flex-wrap:wrap}.gpo label{display:flex;gap:6px;align-items:center}
+/* tag memory */
+.tm-bar{background:var(--navy);color:#fff;font-size:10.5px;padding:3px 8px;text-transform:uppercase;letter-spacing:.3px;margin:0 0 6px}
+.tm-id{display:grid;grid-template-columns:auto 34px 1fr;gap:4px 6px;align-items:center;margin-bottom:8px}
+.tm-par{display:grid;grid-template-columns:1fr 1fr;gap:4px 30px;max-width:900px;margin-bottom:8px}
+.tm-par .row{grid-template-columns:110px 160px}
+.tm-mem{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
+.tm-mem h6{margin:0 0 4px;font-size:11px;font-weight:600;text-align:center}
+.words{display:grid;grid-template-columns:repeat(8,52px);gap:6px}
+.words input{height:26px;text-align:center;font-family:var(--mono);font-size:12.5px;padding:0;letter-spacing:.5px}
+.words input.ro{background:#F7F7F7}.words input.x{color:var(--err)}
+.words input:disabled{background:#F2F2F2;color:#C0C0C0}
+#tm-ascii{height:133px;font-family:var(--mono);font-size:13px;width:100%;min-width:180px}
+.status{border:1px solid var(--bd2);padding:3px 8px;min-height:24px;font-size:11.5px;margin:10px 0;color:#888}
+.status.ok{color:var(--ok);border-color:#A5D6A7;background:#F1F8F1}.status.bad{color:var(--err);border-color:#EF9A9A;background:#FFF5F5}
+.tm-act{display:flex;gap:30px;align-items:center;justify-content:center;margin:6px 0 12px}.tm-act .btn{min-width:150px;min-height:28px}
+details.ext{margin:10px 0 16px;border:1px solid var(--bd2)}details.ext summary{cursor:pointer;padding:4px 8px;background:#F4F6F9;font-size:11.5px}
+details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
+/* settings pages */
+.about{max-width:560px;margin:30px auto;text-align:center}
+.about .logo b{font-size:34px}.about p{color:#555}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:4px 10px;font-size:12px}.kv span:nth-child(odd){color:#666}
+/* menus, dialogs, toast, log */
+.menu{position:fixed;z-index:60;background:#fff;border:1px solid #A9B2BD;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:3px 0;min-width:170px;font-size:12px}
+.menu button,.menu label{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;padding:4px 22px 4px 12px;cursor:pointer;white-space:nowrap;position:relative}
+.menu button:hover,.menu label:hover,.menu .has:hover>button{background:#E3EDF8}
+.menu button:disabled{color:#AAA;cursor:default;background:none}
+.menu hr{border:0;border-top:1px solid #E3E3E3;margin:3px 0}
+.menu .has{position:relative}.menu .has>button::after{content:"›";position:absolute;right:8px;font-size:14px;line-height:1}
+.menu .has>.menu{display:none;position:absolute;left:100%;top:-4px}.menu .has:hover>.menu{display:block}
+.menu .ck{width:12px;display:inline-block;text-align:center}
+.dlg-bg{position:fixed;inset:0;background:rgba(30,40,55,.28);z-index:50;display:grid;place-items:center}
+.dlg{background:#fff;border:1px solid var(--navy);min-width:420px;max-width:92vw;max-height:90vh;overflow:auto;padding:14px 18px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.dlg h3{margin:0 0 12px;font:400 19px "Segoe UI",Arial,sans-serif}
+.dlg .row{grid-template-columns:110px 1fr}
+.dlg .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%);background:#333;color:#fff;padding:7px 14px;border-radius:3px;z-index:70;opacity:0;transition:.2s;pointer-events:none;max-width:80vw;font-size:12px}
+.toast.show{opacity:1}
+.drawer{position:absolute;left:0;right:0;bottom:0;height:200px;background:#1E1E1E;color:#DDD;z-index:20;display:flex;flex-direction:column;font-family:var(--mono);font-size:11.5px}
+.drawer header{display:flex;gap:10px;align-items:center;padding:3px 8px;background:#2D2D2D;font-family:"Segoe UI",sans-serif}
+.drawer header .sp{flex:1}.drawer header button{background:none;border:1px solid #555;color:#ddd;cursor:pointer;font-size:11px;padding:0 6px}
+#log{flex:1;overflow:auto;padding:4px 8px;white-space:pre-wrap}#log .t{color:#888}#log .warn{color:#F0B35A}#log .error{color:#FF7B72}#log .debug{color:#8A8A8A}
+.offline{background:#FFF4E5;border-bottom:1px solid #F0C78A;color:#7A4B00;padding:5px 10px;font-size:12px}
 </style>
 </head>
 <body>
+<div class="titlebar"><span>TagScope</span><span class="sp"></span><a href="mailto:Hill@iotrfid.top">© 2026 Hill · Hill@iotrfid.top</a></div>
 <div class="app">
-<nav aria-label="主菜单">
-  <div class="logo"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="6" fill="#2783DE"/><path d="M8 17.5a7 7 0 0 1 0-9M11 15a3.5 3.5 0 0 1 0-4M18 17.5a7 7 0 0 0 0-9M15 15a3.5 3.5 0 0 0 0-4" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="13" cy="13" r="1.4" fill="#fff"/></svg>TagScope</div>
+<aside aria-label="导航">
+  <div class="logo" aria-label="TagScope"><svg class="dots" width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#E0303A"><circle cx="17" cy="2" r="1.6"/><circle cx="11" cy="4" r="1.3"/><circle cx="23" cy="4" r="1.3"/><circle cx="6.5" cy="7.5" r="1.1"/><circle cx="27.5" cy="7.5" r="1.1"/><circle cx="14" cy="7" r="1.1"/><circle cx="20" cy="7" r="1.1"/><circle cx="3.5" cy="12" r=".9"/><circle cx="30.5" cy="12" r=".9"/><circle cx="17" cy="9" r="1"/></g></svg><b>TAGSCOPE</b></div>
   <div class="sec">
-    <div class="sec-h">数据源<span><button class="ib" title="自动发现（网页版不可用）" aria-label="自动发现读写器" disabled><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6"/></svg></button><button class="ib" id="ds-add" title="添加数据源" aria-label="添加数据源"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.8"/></svg></button></span></div>
+    <div class="sh">展示</div>
+    <button class="ni" data-nav="inventory">盘点</button>
+    <button class="ni" data-nav="location" title="需要 Impinj xArray 网关">定位</button>
+    <button class="ni" data-nav="direction" title="需要 Impinj xSpan / xArray 网关">方向</button>
+    <button class="ni" data-nav="memory">标签存储</button>
+  </div>
+  <div class="sec">
+    <div class="sh">数据源<span class="sp"></span><button class="plus" id="ds-add" title="添加数据源" aria-label="添加数据源"><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="#222" stroke-width="1.6"/></svg></button></div>
     <div id="dsList"></div>
   </div>
   <div class="sec">
-    <div class="sec-h">展示</div>
-    <button class="nav-i" data-view="inventory" aria-current="page"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6h12M2 9.5h12M6 2.5v11"/></svg>盘点</button>
-    <button class="nav-i" disabled title="需要 xArray / xSpan 网关"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>定位<small>xArray</small></button>
-    <button class="nav-i" disabled title="需要 xArray / xSpan 网关"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5h11M10 2.5l3 3-3 3M14 10.5H3M6 7.5l-3 3 3 3"/></svg>方向<small>xSpan</small></button>
-    <button class="nav-i" data-view="memory"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1.5" width="10" height="13" rx="1.5"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3"/></svg>标签存储</button>
+    <div class="sh">关注标签 <span class="badge" id="toiBadge" hidden>0</span><span class="sp"></span><button class="plus" id="toi-add" title="载入关注标签文件（JSON / CSV）" aria-label="载入关注标签文件"><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="#222" stroke-width="1.6"/></svg></button></div>
+    <div id="toiList"></div>
+    <input type="file" id="toi-file" accept=".json,.csv,.txt" multiple hidden>
   </div>
   <div class="sec">
-    <div class="sec-h">关注标签<span><button class="ib" id="toi-add" title="载入关注标签文件" aria-label="载入关注标签文件"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.8"/></svg></button></span></div>
-    <div id="toiList"><div class="ds-empty">未载入文件</div></div>
-    <input type="file" id="toi-file" accept=".txt,.csv" hidden>
+    <div class="sh">设置</div>
+    <button class="ni" data-nav="updates">更新</button>
+    <button class="ni" data-nav="logging">标签日志</button>
+    <button class="ni" data-nav="about">关于</button>
   </div>
-  <div class="sec">
-    <div class="sec-h">设置</div>
-    <button class="nav-i" data-view="appset"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg>应用设置</button>
-    <button class="nav-i" data-view="logging"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h9M4 8h9M4 13h9"/><circle cx="1.8" cy="3" r=".6"/><circle cx="1.8" cy="8" r=".6"/><circle cx="1.8" cy="13" r=".6"/></svg>标签日志</button>
-    <button class="nav-i" data-view="about"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.8v.2"/></svg>关于</button>
-  </div>
-  <div class="side-foot">© 2026 Hill<br><a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a></div>
-</nav>
-
+  <div class="side-foot"><button id="logBtn">日志</button> · <span id="bridgeTxt"></span><br>© 2026 Hill<br><a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a></div>
+</aside>
 <main>
   <div class="offline" id="offline" hidden></div>
 
-  <!-- Inventory showcase -->
-  <section class="view" id="v-inventory" aria-labelledby="t-inv">
-    <div class="vh">
-      <h1 id="t-inv">盘点</h1>
-      <button class="cb play" id="b-start" title="开始" aria-label="开始盘点" disabled><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5l9 5.5-9 5.5z" fill="currentColor"/></svg></button>
-      <button class="cb stop" id="b-stop" title="停止" aria-label="停止盘点" disabled><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="currentColor"/></svg></button>
-      <span class="vsep"></span>
-      <button class="tb" id="b-clear" title="清除"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg> 清除</button>
-      <button class="tb" id="b-settings" title="读写器设置" disabled><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg> 设置</button>
-      <button class="tb" id="b-csv" title="导出 CSV"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M3 13h10"/></svg> 导出</button>
-      <span class="vsep"></span>
-      <button class="tb" id="vw-table" aria-pressed="true" title="表格视图"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6h12M2 9.5h12M6 2.5v11"/></svg> 表格</button>
-      <button class="tb" id="vw-list" aria-pressed="false" title="列表视图"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="4" rx="1"/><rect x="2" y="9.5" width="12" height="4" rx="1"/></svg> 列表</button>
-      <div class="counters">
-        <div class="ct"><b id="c-uniq">0</b><span>唯一标签</span></div>
-        <div class="ct"><b id="c-total">0</b><span>总读取</span></div>
-        <div class="ct"><b id="c-rate">0</b><span>读取/秒</span></div>
-        <div class="ct"><b id="c-time">00:00:00</b><span>运行时间</span></div>
-      </div>
+  <!-- ============ Inventory showcase ============ -->
+  <section class="view" id="v-inventory">
+    <div class="sc-head">
+      <button class="play" id="inv-play" title="开始" aria-label="开始盘点"><svg id="playIco" width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M2 1l9 5.5L2 12z" fill="#111"/></svg><svg id="stopIco" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true" hidden><rect width="11" height="11" fill="#111"/></svg></button>
+      <div class="clock" id="inv-clock">00:00:00.000</div>
+      <button class="gear" id="inv-gear" title="盘点展示设置" aria-label="盘点展示设置"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#111" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5l1.6 2.6 3-.6.6 3 2.6 1.6-1.3 2.9 1.3 2.9-2.6 1.6-.6 3-3-.6L12 21.5l-1.6-2.6-3 .6-.6-3-2.6-1.6 1.3-2.9-1.3-2.9 2.6-1.6.6-3 3 .6z"/></svg></button>
     </div>
-    <div class="toi-bar" id="toiBar" hidden><span id="toiTxt"></span><label class="chk"><input type="checkbox" id="toiOnly">只显示关注标签</label></div>
-    <div class="grid-wrap" id="gridWrap">
-      <table class="g" id="grid"><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table>
-      <div class="cards" id="cards" hidden></div>
-      <div class="empty" id="empty">添加并启用数据源，然后点击 ▶ 开始盘点。右键列标题可选择显示的列，右键标签可访问标签存储。</div>
-    </div>
+    <div class="grid-wrap" id="gridWrap"><table class="g" id="grid"><thead id="thead"></thead><tbody id="tbody"></tbody></table><div class="blank" id="blank"></div></div>
+    <div class="toi-sum" id="toiSum" hidden></div>
+    <div class="plot" id="plot" hidden><h4>唯一标签曲线</h4><canvas id="plotCv"></canvas></div>
+    <div class="sc-foot"><span id="scenTxt">连续 - 永久运行</span><span class="sp"></span><span>唯一标签: <b id="f-uniq">0</b></span><span>读取速率: <b id="f-rate">0.000</b> 次/秒</span></div>
   </section>
 
-  <!-- Tag memory showcase -->
-  <section class="view" id="v-memory" hidden aria-labelledby="t-mem">
-    <div class="vh"><h1 id="t-mem">标签存储</h1></div>
-    <div class="pad">
-      <div class="fr">
-        <label class="f" style="flex:1;min-width:260px">EPC<input type="text" id="m-epc" class="mono" placeholder="在盘点列表中右键标签 → 标签存储访问"></label>
-        <label class="f">访问密码<input type="text" id="m-pwd" class="mono" value="00000000" maxlength="8" style="width:110px"></label>
-        <label class="f">超时（秒）<input type="number" id="m-to" value="5" min="1" max="60" style="width:80px"></label>
-      </div>
-      <div class="fr">
-        <label class="f">存储区<select id="m-bank"><option value="reserved">Reserved</option><option value="epc" selected>EPC</option><option value="tid">TID</option><option value="user">User</option></select></label>
-        <label class="f">字数<select id="m-cnt"></select></label>
-        <label class="f">字偏移<select id="m-off"></select></label>
-        <button class="btn pri" id="m-read" disabled>读取</button>
-        <button class="btn" id="m-write" disabled>写入</button>
-      </div>
-      <div class="mem" id="mem"></div>
-      <div class="res" id="m-res" aria-live="polite">读取结果会显示在这里。EPC 存储区的第 0、1 字分别是 CRC-16 和 PC。</div>
-      <details>
-        <summary>写 EPC、锁定与灭活</summary>
-        <div>
-          <div class="fr"><label class="f" style="flex:1;min-width:240px">新 EPC<input type="text" id="x-epc" class="mono"></label><button class="btn" id="x-wepc" disabled>写入 EPC</button></div>
-          <div class="fr">
-            <label class="f">存储区<select id="x-field"><option value="epc">EPC</option><option value="user">User</option><option value="access">访问密码</option><option value="kill">灭活密码</option><option value="tid">TID</option></select></label>
-            <label class="f">操作<select id="x-priv"><option value="lock">锁定</option><option value="unlock">解锁</option><option value="permalock">永久锁定</option><option value="permaunlock">永久解锁</option></select></label>
-            <button class="btn" id="x-lock" disabled>执行</button>
-          </div>
-          <div class="fr"><label class="f">灭活密码<input type="text" id="x-kpwd" class="mono" maxlength="8" style="width:120px"></label><button class="btn dng" id="x-kill" disabled>灭活标签</button></div>
-          <p class="note">锁定前请先写入非零访问密码。永久锁定和灭活都无法撤销。</p>
+  <!-- ============ Inventory showcase settings ============ -->
+  <section class="view" id="v-invset" hidden>
+    <div class="page">
+      <div class="pnl"><div class="ph">盘点显示</div><div class="pb cols">
+        <div><label class="radio"><input type="radio" name="iv" value="list"> 列表视图</label><label class="radio"><input type="radio" name="iv" value="table"> 表格视图</label></div>
+        <div><label class="chk"><span class="sw"><input type="checkbox" id="is-flip"><span></span></span>行列互换</label><br><label class="chk"><span class="sw"><input type="checkbox" id="is-toisum"><span></span></span>显示关注标签汇总</label></div>
+      </div></div>
+      <div class="pnl"><div class="ph">盘点运行配置</div><div class="pb">
+        <div class="sub"><div class="ph">运行场景</div><div class="pb">
+          <label class="radio"><input type="radio" name="rs" value="continuous"> 连续 - 永久运行</label>
+          <label class="radio"><input type="radio" name="rs" value="timed"> 定时 - 按指定时间间隔运行</label>
+          <label class="radio"><input type="radio" name="rs" value="margin"> 余量测试 - 逐级提高功率的连续多次运行</label>
+          <label class="radio"><input type="radio" name="rs" value="gpi"> GPI 触发 - 由 GPI 启动（及可选停止）</label>
+          <label class="chk" style="margin-left:22px"><input type="checkbox" id="is-gpireset"> GPI 启动时总是重置秒表</label>
+        </div></div>
+        <div class="cols3">
+          <div class="sub"><div class="ph">时间</div><div class="pb">
+            <label class="row"><span>启动延迟 (s):</span><input type="number" id="is-delay" min="0" step="1"></label>
+            <label class="row"><span>开启时间 (s):</span><input type="number" id="is-on" min="1" step="1"></label>
+            <label class="row"><span>关闭时间 (s):</span><input type="number" id="is-off" min="0" step="1"></label>
+            <label class="row"><span>启动时蜂鸣:</span><span><input type="checkbox" id="is-beep"></span></label>
+            <label class="row"><span>运行次数:</span><input type="number" id="is-runs" min="1" step="1"></label>
+          </div></div>
+          <div class="sub"><div class="ph">功率</div><div class="pb">
+            <label class="row"><span>起始功率 (dBm):</span><select id="is-p0"></select></label>
+            <label class="row"><span>结束功率 (dBm):</span><select id="is-p1"></select></label>
+            <label class="row"><span>功率步进 (dBm):</span><select id="is-ps"></select></label>
+            <div class="note" id="is-pinfo"></div>
+          </div></div>
         </div>
-      </details>
+      </div></div>
+      <div class="pnl"><div class="ph">附加功能</div><div class="pb">
+        <label class="chk"><input type="checkbox" id="is-plot"> 显示唯一标签曲线</label><br>
+        <label class="chk"><input type="checkbox" id="is-hexman"> 启用手动十六进制 / Base64 格式</label><br>
+        <label class="chk"><input type="checkbox" id="is-reset"> 将标签重置为 A 状态：</label>
+        <div style="margin-left:22px">
+          <label class="radio"><input type="radio" name="rst" value="initial"> 首次运行前</label>
+          <label class="radio"><input type="radio" name="rst" value="each"> 每次运行前</label>
+          <label class="row" style="max-width:420px"><span>重置时长 (s):</span><input type="number" id="is-rdur" min="1" max="999" step="1"></label>
+        </div>
+        <label class="row" style="max-width:420px"><span>读取速率窗口 (s):</span><input type="number" id="is-rwin" min="0" step="1"></label>
+        <div class="note">读取速率窗口为 0 时按整个运行时长计算（不含启动延迟与关闭时间）。</div>
+      </div></div>
+    </div>
+    <div class="page-foot"><button class="btn" id="is-save">保存</button><button class="btn" id="is-cancel">取消</button></div>
+  </section>
+
+  <!-- ============ Tag memory showcase ============ -->
+  <section class="view" id="v-memory" hidden>
+    <div class="sc-head"><span></span><div class="clock" id="tm-clock">00:00:00.000</div><span></span></div>
+    <div class="page">
+      <div class="tm-bar" id="tm-model">未知标签型号：启用 FAST ID 以识别</div>
+      <div class="row" style="max-width:520px" id="tm-srcRow"><span>数据源:</span><select id="tm-src"></select></div>
+      <div class="tm-id">
+        <input type="radio" name="tmt" value="tid" id="tm-rtid" aria-label="按 TID 选择"><label for="tm-rtid">TID:</label><input type="text" id="tm-tid" class="mono" spellcheck="false">
+        <input type="radio" name="tmt" value="epc" id="tm-repc" aria-label="按 EPC 选择" checked><label for="tm-repc">EPC:</label><input type="text" id="tm-epc" class="mono" spellcheck="false">
+      </div>
+      <div class="tm-par">
+        <div>
+          <label class="row"><span>存储区:</span><select id="tm-bank"><option value="reserved">RESERVED</option><option value="epc" selected>EPC</option><option value="tid">TID</option><option value="user">USER</option></select></label>
+          <label class="row"><span>字数:</span><select id="tm-cnt"></select></label>
+          <label class="row"><span>字偏移:</span><select id="tm-off"></select></label>
+        </div>
+        <div>
+          <label class="row"><span>访问密码:</span><input type="text" id="tm-pwd" class="mono" maxlength="8" placeholder="00000000" spellcheck="false"></label>
+          <div class="row"><span></span><button class="btn sm" id="tm-setpwd">设置访问密码</button></div>
+        </div>
+      </div>
+      <div class="tm-mem">
+        <div><h6>标签存储</h6><div class="words" id="tm-words"></div></div>
+        <div><h6>ASCII</h6><textarea id="tm-ascii" spellcheck="false" aria-label="ASCII"></textarea></div>
+      </div>
+      <div style="text-align:center;margin-top:8px"><button class="btn sm" id="tm-copy">复制到剪贴板</button></div>
+      <div class="status" id="tm-status">就绪</div>
+      <div class="tm-act"><button class="btn" id="tm-read">读取</button><span class="btns"><button class="btn" id="tm-write">写入</button><label class="chk"><input type="checkbox" id="tm-block"> 使用块写（BlockWrite）</label></span></div>
+      <details class="ext"><summary>扩展操作（TagScope）：锁定 / 灭活</summary><div class="pb">
+        <div><label class="row"><span>锁定区域:</span><select id="tm-lfield"><option value="epc">EPC</option><option value="user">USER</option><option value="tid">TID</option><option value="access">访问密码</option><option value="kill">灭活密码</option></select></label>
+          <label class="row"><span>锁定权限:</span><select id="tm-lpriv"><option value="lock">锁定</option><option value="unlock">解锁</option><option value="permalock">永久锁定</option><option value="permaunlock">永久解锁</option></select></label>
+          <div class="row"><span></span><button class="btn sm" id="tm-lock">执行锁定</button></div></div>
+        <div><label class="row"><span>灭活密码:</span><input type="text" id="tm-kpwd" class="mono" maxlength="8" placeholder="非 0 的 8 位十六进制"></label>
+          <div class="row"><span></span><button class="btn sm" id="tm-kill">灭活标签（不可恢复）</button></div></div>
+      </div></details>
     </div>
   </section>
 
-  <!-- Application settings -->
-  <section class="view" id="v-appset" hidden aria-labelledby="t-as">
-    <div class="vh"><h1 id="t-as">应用设置</h1></div>
-    <div class="pad">
-      <h2 class="s">表格视图列</h2><div class="cols" id="colsTable"></div>
-      <h2 class="s">列表视图字段</h2><div class="cols" id="colsList"></div>
-      <h2 class="s">显示</h2>
-      <label class="f" style="max-width:260px">标签变灰时间（秒）<input type="number" id="as-fade" value="10" min="1" max="120"></label>
-      <p class="note">与 ItemTest 一致：1 秒内读到的标签为白色，之后逐渐变深，达到设定时间后为最深的灰色。</p>
-    </div>
+  <!-- ============ Add / edit data source ============ -->
+  <section class="view" id="v-dsadd" hidden>
+    <div class="page"><div class="add-wrap">
+      <h2 id="da-title">添加数据源</h2>
+      <p>数据源即 TagScope 获取标签读取数据的读写器或网关。填写主机名、可选昵称，并选择读写器接口；如有需要可在高级选项中启用 TLS 或覆盖默认凭据。</p>
+      <div class="fld"><label for="da-host">主机名:</label><input type="text" id="da-host" placeholder="例如 192.168.1.242 或 impinj-12-34-56.local:5084" spellcheck="false"><div class="err" id="da-herr" hidden>需要填写主机名或 IP 地址</div></div>
+      <div class="fld"><label for="da-nick">昵称: <i>（可选）</i></label><input type="text" id="da-nick"><div class="err" id="da-nerr" hidden>昵称必须唯一</div></div>
+      <div class="fld"><label for="da-if">数据源接口:</label><select id="da-if"><option value="llrp">Impinj LLRP 接口</option><option value="rest">Impinj IoT 设备接口（R700 REST）</option><option value="sim">模拟读写器（无需硬件）</option></select></div>
+      <div class="fld da-sim"><label for="da-simn">模拟标签数量:</label><input type="number" id="da-simn" min="1" max="2000" value="40"></div>
+      <div class="fld da-bridge"><label for="da-bridge">桥接服务地址:</label><input type="text" id="da-bridge" placeholder="http://localhost:8080" spellcheck="false"><div class="note">网页无法直接建立 LLRP TCP 连接，需要在可访问读写器的电脑上运行 TagScope 桥接服务（node server.js）。</div></div>
+      <div class="pnl da-nsim"><div class="ph tog" id="da-advT"><span class="car">▼</span>高级选项</div><div class="pb" id="da-adv" hidden>
+        <label class="row"><span>端口:</span><input type="number" id="da-port" placeholder="5084"></label>
+        <div class="row da-rest"><span>认证方式:</span><select disabled><option>Basic</option></select></div>
+        <label class="row da-rest"><span><span class="sw"><input type="checkbox" id="da-tls"><span></span></span> 使用 TLS</span><label class="chk"><input type="checkbox" id="da-ins"> 允许自签名证书</label></label>
+        <label class="row da-rest"><span><span class="sw"><input type="checkbox" id="da-cred"><span></span></span> 覆盖默认凭据</span><span></span></label>
+        <label class="row da-rest da-cr"><span>用户名:</span><input type="text" id="da-user" placeholder="root" autocomplete="username"></label>
+        <label class="row da-rest da-cr"><span>密码:</span><input type="password" id="da-pass" placeholder="••••••" autocomplete="current-password"></label>
+      </div></div>
+      <div class="btns" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="da-ok">添加数据源</button><button class="btn" id="da-cancel">取消</button></div>
+    </div></div>
   </section>
 
-  <!-- Tag logging -->
-  <section class="view" id="v-logging" hidden aria-labelledby="t-lg">
-    <div class="vh"><h1 id="t-lg">标签日志</h1></div>
-    <div class="pad">
-      <label class="chk"><input type="checkbox" id="lg-on">记录每次读取（保存在浏览器内存中）</label>
-      <div class="fr" style="margin-top:12px"><label class="f">文件名前缀<input type="text" id="lg-prefix" value="TagScope"></label>
-        <button class="btn" id="lg-dl">下载读取日志</button><button class="btn" id="lg-dlu">下载唯一标签日志</button><button class="btn" id="lg-clr">清空</button></div>
-      <p class="note" id="lg-info">已记录 0 条读取。</p>
+  <!-- ============ Data source configuration ============ -->
+  <section class="view" id="v-dscfg" hidden>
+    <div class="page">
+      <div class="ds-head" id="dc-head"></div>
+      <div class="tabs" role="tablist"><button role="tab" data-tab="inv" aria-selected="true">盘点</button><button role="tab" data-tab="diag" aria-selected="false">诊断</button></div>
+      <div id="dc-inv">
+        <div class="preset"><span>预设:</span><select id="dc-preset"></select><span class="sp"></span>
+          <button class="btn sm" id="dc-refresh">刷新能力</button><button class="btn sm" id="dc-import">导入</button><button class="btn sm" id="dc-export">导出</button><button class="btn sm" id="dc-copy">复制</button><button class="btn sm" id="dc-reset">重置</button><button class="btn sm" id="dc-del">删除</button>
+          <input type="file" id="dc-file" accept=".json" hidden></div>
+        <div class="cols">
+          <div>
+            <div class="pnl"><div class="ph">手动设置</div><div class="pb">
+              <div class="row"><span>天线: <span class="hub" id="dc-hub"></span></span><input type="text" id="dc-ants" placeholder="1, 2, 3, 4" spellcheck="false"></div>
+              <div class="row"><span></span><span class="btns"><button class="btn sm" id="dc-aall">全部</button><button class="btn sm" id="dc-aclr">清除</button></span></div>
+              <label class="row"><span>RF 模式:</span><select id="dc-mode"></select></label>
+              <label class="row"><span>搜索模式:</span><select id="dc-search"><option value="1">Single Target</option><option value="2">Dual Target</option><option value="3">TagFocus™（Single Target w/ Suppression）</option><option value="5">Single Target Reset</option><option value="6">Dual Target Select B to A</option></select></label>
+              <label class="row"><span>启用 Fast ID:</span><span><input type="checkbox" id="dc-fastid"></span></label>
+              <label class="row"><span>预估标签数量:</span><input type="number" id="dc-pop" min="1" max="65535"></label>
+              <label class="row"><span>Session:</span><select id="dc-ses"><option value="0">Session 0</option><option value="1">Session 1</option><option value="2">Session 2</option><option value="3">Session 3</option></select></label>
+              <label class="row"><span>报告相位角:</span><span><input type="checkbox" id="dc-phase"></span></label>
+              <label class="row"><span>报告多普勒频率:</span><span><input type="checkbox" id="dc-dop"></span></label>
+            </div></div>
+            <div class="pnl"><div class="ph">功率与灵敏度设置</div><div class="pb">
+              <label class="row"><span>功率 (dBm):</span><select id="dc-pwr"></select></label>
+              <label class="row"><span>接收灵敏度 (dBm):</span><select id="dc-rx"></select></label>
+              <label class="row"><span>启用最大灵敏度:</span><span><input type="checkbox" id="dc-maxs"></span></label>
+              <div class="sub"><div class="ph tog" id="dc-indT"><span class="car">▼</span>单独设置天线</div><div class="pb" id="dc-ind" hidden><div class="ants" id="dc-antTbl"></div></div></div>
+            </div></div>
+            <div class="pnl"><div class="ph">GPI 配置</div><div class="pb"><table class="gpi" id="dc-gpi"></table><div class="note" id="dc-gpinote"></div></div></div>
+          </div>
+          <div>
+            <div class="pnl"><div class="ph">GEN 2 过滤</div><div class="pb"><div id="dc-flts"></div><button class="btn sm" id="dc-fadd">+ 添加过滤器</button><div class="note">最多 5 个 Select 过滤器，按顺序执行；匹配/不匹配动作可组合出 与 / 或 / 非 逻辑。</div></div></div>
+            <div class="pnl"><div class="ph">低占空比（Low Duty Cycle）</div><div class="pb">
+              <label class="row"><span>启用:</span><span><input type="checkbox" id="dc-ldc"></span></label>
+              <label class="row"><span>空场超时 (ms):</span><input type="number" id="dc-ldcE" min="0"></label>
+              <label class="row"><span>场探测间隔 (ms):</span><input type="number" id="dc-ldcP" min="0"></label>
+              <div class="note">需要 Impinj 扩展（Octane LLRP）。</div>
+            </div></div>
+          </div>
+        </div>
+      </div>
+      <div id="dc-diag" hidden>
+        <div class="pnl"><div class="ph">GPO 控制</div><div class="pb"><div class="gpo" id="dc-gpo"></div></div></div>
+        <div class="pnl" id="dc-simgpiP"><div class="ph">模拟 GPI 输入（仅模拟器）</div><div class="pb"><div class="gpo" id="dc-simgpi"></div></div></div>
+        <div class="pnl"><div class="ph">设备信息</div><div class="pb"><div class="kv" id="dc-info"></div></div></div>
+      </div>
     </div>
+    <div class="page-foot" id="dc-foot"><button class="btn" id="dc-save">保存</button><button class="btn" id="dc-cancel">取消</button></div>
   </section>
 
-  <!-- About -->
-  <section class="view" id="v-about" hidden aria-labelledby="t-ab">
-    <div class="vh"><h1 id="t-ab">关于</h1></div>
-    <div class="pad" style="max-width:720px">
-      <h2 class="s">TagScope · RFID 标签观测台</h2>
-      <p>版本 1.2.0。网页版 RFID 读写器测试工具，界面和工作流程参照 Impinj ItemTest 2.x，支持 LLRP、Impinj IoT Device Interface 和模拟器三种数据源。</p>
-      <p><b>版权所有 © 2026 Hill</b><br>联系方式：<a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a></p>
-      <p class="note">Impinj、ItemTest、Speedway、xArray 是 Impinj, Inc. 的商标。TagScope 是独立开发的软件，与 Impinj 没有隶属关系。</p>
-      <h2 class="s">读写器信息</h2><div id="aboutReader" class="note">未连接</div>
-    </div>
-  </section>
+  <!-- ============ Tags of interest window ============ -->
+  <section class="view" id="v-toi" hidden><div class="page">
+    <div class="ds-head" id="toi-head"></div>
+    <div class="btns" style="margin:4px 0 8px"><button class="btn sm" id="toi-exp">导出 JSON</button><button class="btn sm" id="toi-rm">移除此文件</button></div>
+    <table class="g" id="toi-tbl"></table>
+  </div></section>
+
+  <!-- ============ Location / Direction (gateway only) ============ -->
+  <section class="view" id="v-location" hidden><div class="page"><div class="about"><h2>定位展示</h2><p>定位展示需要 Impinj xArray 网关（LLRP 定位模式）。当前数据源中没有兼容设备，此展示不可用。</p></div></div></section>
+  <section class="view" id="v-direction" hidden><div class="page"><div class="about"><h2>方向展示</h2><p>方向展示需要 Impinj xSpan 或 xArray 网关（方向模式）。当前数据源中没有兼容设备，此展示不可用。</p></div></div></section>
+
+  <!-- ============ Settings: updates / logging / about ============ -->
+  <section class="view" id="v-updates" hidden><div class="page">
+    <div class="pnl"><div class="ph">更新配置</div><div class="pb">
+      <label class="chk"><span class="sw"><input type="checkbox" id="up-auto"><span></span></span>启动时自动检查更新</label>
+      <div class="kv" style="margin:10px 0"><span>网页版本:</span><span id="up-web"></span><span>桥接服务版本:</span><span id="up-br">—</span><span>最新版本:</span><span id="up-latest">—</span></div>
+      <div class="btns"><button class="btn" id="up-check">立即检查</button><a class="btn" href="https://github.com/duguwuji/tagscope/archive/refs/heads/main.zip" target="_blank" rel="noopener">下载最新桥接服务</a></div>
+      <div class="note" id="up-msg"></div>
+    </div></div>
+  </div></section>
+  <section class="view" id="v-logging" hidden><div class="page">
+    <div class="pnl"><div class="ph">标签日志</div><div class="pb">
+      <label class="chk"><span class="sw"><input type="checkbox" id="lg-on"><span></span></span>记录标签数据</label>
+      <label class="row" style="max-width:560px"><span>目标目录:</span><input type="text" value="浏览器默认下载目录" disabled></label>
+      <label class="row" style="max-width:560px"><span>文件名前缀:</span><input type="text" id="lg-prefix"></label>
+      <label class="chk"><input type="checkbox" id="lg-uniq"> 生成唯一标签日志</label>
+      <div class="note">启用后，每次盘点运行结束（含定时 / 余量测试的每一次运行）自动下载一个 CSV 日志；文件头包含运行时间、参与的读写器与预设。</div>
+      <div class="btns" style="margin-top:8px"><button class="btn" id="lg-dl">下载当前读取日志</button><button class="btn" id="lg-dlu">下载唯一标签列表</button><span class="hint" id="lg-info"></span></div>
+    </div></div>
+  </div></section>
+  <section class="view" id="v-about" hidden><div class="page"><div class="about">
+    <div class="logo"><svg class="dots" width="68" height="28" viewBox="0 0 34 14" aria-hidden="true"><g fill="#E0303A"><circle cx="17" cy="2" r="1.6"/><circle cx="11" cy="4" r="1.3"/><circle cx="23" cy="4" r="1.3"/><circle cx="6.5" cy="7.5" r="1.1"/><circle cx="27.5" cy="7.5" r="1.1"/><circle cx="14" cy="7" r="1.1"/><circle cx="20" cy="7" r="1.1"/><circle cx="3.5" cy="12" r=".9"/><circle cx="30.5" cy="12" r=".9"/><circle cx="17" cy="9" r="1"/></g></svg><b>TAGSCOPE</b></div>
+    <p>版本 <span id="ab-ver"></span> · 桥接服务 <span id="ab-br">—</span></p>
+    <p>面向 RFID 工程师的 UHF RFID 读写器测试工具：盘点、余量测试、标签存储读写、Gen2 过滤、GPI/GPO，支持 Impinj LLRP、R700 IoT 接口和模拟器。</p>
+    <p><a class="btn pri" href="https://github.com/duguwuji/tagscope#readme" target="_blank" rel="noopener">打开用户指南</a></p>
+    <p style="font-size:11.5px;color:#888">© 2026 Hill · <a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a><br>Impinj、ItemTest、Octane、FastID、TagFocus 是 Impinj, Inc. 的商标；TagScope 为独立项目，与 Impinj 无关联。</p>
+  </div></div></section>
+
+  <div class="drawer" id="drawer" hidden><header><b>日志</b><label><input type="checkbox" id="lgDebug"> 调试</label><span class="sp"></span><button id="lgClear">清空</button><button id="lgClose">关闭</button></header><div id="log" role="log"></div></div>
 </main>
-
-<footer>
-  <span><i class="dot" id="sb-dot"></i><span id="sb-state">未连接</span></span>
-  <span class="sim-tag" id="sb-sim" hidden>模拟数据</span>
-  <span class="msg" id="sb-msg"></span>
-  <button id="sb-log">日志</button>
-  <span class="sb-copy">© 2026 Hill · Hill@iotrfid.top</span>
-</footer>
 </div>
-
-<div class="drawer" id="drawer" hidden>
-  <div class="dh"><span>日志</span><label class="chk" style="font-weight:400"><input type="checkbox" id="lgDebug">显示协议细节</label><button class="btn" id="lgClear" style="height:26px">清空</button><button class="btn" id="lgClose" style="height:26px">关闭</button></div>
-  <div class="log" id="log"></div>
-</div>
-
-<!-- Add data source -->
-<div class="ov" id="dlg-ds" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dsT">
-  <h3><span id="dsT">添加数据源</span></h3>
-  <div class="bd"><div class="g2">
-    <label class="f s2">主机名或 IP 地址<input type="text" id="d-host" class="mono" placeholder="impinj-xx-xx-xx 或 192.168.1.100" autocomplete="off"></label>
-    <label class="f s2">昵称（可选）<input type="text" id="d-nick" placeholder="例如：仓库门口 R700"></label>
-    <label class="f s2">数据源接口<select id="d-if"><option value="llrp">LLRP</option><option value="rest">Impinj IoT Device Interface（R700 / R660）</option><option value="sim">模拟器（无硬件）</option></select></label>
-    <label class="f d-nsim">端口<input type="number" id="d-port" placeholder="5084"></label>
-    <label class="f d-rest">协议<select id="d-tls"><option value="1">HTTPS</option><option value="0">HTTP</option></select></label>
-    <label class="f d-rest">用户名<input type="text" id="d-user" value="root" autocomplete="username"></label>
-    <label class="f d-rest">密码<input type="password" id="d-pass" placeholder="impinj" autocomplete="current-password"></label>
-    <label class="chk s2 d-rest"><input type="checkbox" id="d-ins" checked>接受读写器自签名证书</label>
-    <label class="f s2 d-sim">模拟标签数量<input type="number" id="d-sim" value="40" min="1" max="2000"></label>
-    <label class="f s2 d-bridge">桥接服务地址<input type="text" id="d-bridge" class="mono" placeholder="http://localhost:8080" autocomplete="off"></label>
-  </div><p class="note d-bridge">网页版无法直接访问局域网内的读写器。请在与读写器同一网络的电脑上运行 TagScope 桥接服务（<b>node server.js</b>），网页通过它连接读写器。</p>
-  <p class="note d-simc">模拟器直接在浏览器中运行，不需要桥接服务。</p><p class="note d-rest">IoT 接口的功能较少，不能访问标签存储。需要完整功能时，请在读写器网页中切换为 LLRP 接口。</p></div>
-  <div class="ft"><button class="btn" data-close>取消</button><button class="btn pri" id="d-ok">添加数据源</button></div>
-</div></div>
-
-<!-- Reader settings -->
-<div class="ov" id="dlg-set" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="setT" style="width:min(680px,100%)">
-  <h3><span id="setT">读写器设置</span><label class="f" style="flex-direction:row;align-items:center;gap:6px;font-weight:400">配置<select id="p-sel"></select></label></h3>
-  <div class="bd">
-    <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-p="st-inv">盘点</button><button role="tab" aria-selected="false" data-p="st-ant">天线</button><button role="tab" aria-selected="false" data-p="st-flt">过滤</button></div>
-    <div id="st-inv" class="g2">
-      <label class="f s2">天线（例如 1,2,3,4）<input type="text" id="s-ants" value="1"></label>
-      <label class="f s2">RF 模式<select id="s-mode"></select></label>
-      <label class="f s2" id="s-mc-w" hidden>自定义模式编号<input type="number" id="s-mc" value="0"></label>
-      <label class="f">预计标签数量<input type="number" id="s-pop" value="32" min="1"></label>
-      <label class="f">Session<select id="s-ses"><option>0</option><option selected>1</option><option>2</option><option>3</option></select></label>
-      <label class="f s2">搜索模式<select id="s-search"><option value="0">读写器默认</option><option value="1">单目标</option><option value="2" selected>双目标</option><option value="3">单目标 + 抑制（TagFocus）</option><option value="5">单目标重置</option><option value="6">双目标 + B→A 选择</option></select></label>
-      <label class="f">功率（dBm）<input type="number" id="s-pwr" value="30" step="0.25"></label>
-      <label class="f">接收灵敏度（dBm）<select id="s-rx"><option value="">最大</option></select></label>
-      <label class="f">运行时长（秒，0 = 持续）<input type="number" id="s-dur" value="0" min="0"></label>
-      <span></span>
-      <label class="chk"><input type="checkbox" id="s-fastid">FastID（上报 TID）</label>
-      <label class="chk"><input type="checkbox" id="s-dop">上报多普勒频移</label>
-    </div>
-    <div id="st-ant" hidden>
-      <p class="note" style="margin-top:0">单独设置某个天线的功率和灵敏度，留空则使用“盘点”页的值。</p>
-      <table class="ants"><thead><tr><th>天线</th><th>状态</th><th>功率 dBm</th><th>灵敏度 dBm</th></tr></thead><tbody id="antBody"></tbody></table>
-    </div>
-    <div id="st-flt" class="g2" hidden>
-      <label class="chk s2"><input type="checkbox" id="f-on">启用过滤</label>
-      <label class="f">存储区<select id="f-bank"><option value="epc">EPC</option><option value="tid">TID</option><option value="user">User</option></select></label>
-      <label class="f">动作<select id="f-act"><option value="include">只读匹配标签</option><option value="exclude">排除匹配标签</option></select></label>
-      <label class="f">起始位<input type="number" id="f-ptr" value="32" min="0"></label>
-      <label class="f">长度（位，可选）<input type="number" id="f-len" placeholder="自动"></label>
-      <label class="f s2">掩码（十六进制）<input type="text" id="f-mask" class="mono" placeholder="例如 E280"></label>
-      <p class="note s2">EPC 存储区第 32 位开始是 EPC 本体。没有读到标签时，请先检查过滤是否被误开启。</p>
-    </div>
-  </div>
-  <div class="ft"><button class="btn l" id="p-save">另存为新配置</button><button class="btn" data-close>取消</button><button class="btn pri" id="s-ok">确定</button></div>
-</div></div>
-
-<div class="menu" id="menu" hidden role="menu"></div>
-<div class="toast" id="toast" role="alert"></div>
-
-<script src="app.js"></script>
+<div class="menu" id="menu" hidden></div>
+<div class="dlg-bg" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" id="dlgBox"></div></div>
+<div class="toast" id="toast" role="status"></div>
+<script src="tagdb.js?v=2.0.0"></script>
+<script src="sim.js?v=2.0.0"></script>
+<script src="app.js?v=2.0.0"></script>
+<script src="views.js?v=2.0.0"></script>
 </body>
 </html>
