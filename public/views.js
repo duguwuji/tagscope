@@ -82,7 +82,8 @@ async function startShowcase() {
 }
 function endPhase() { if (run && run.phase === 'on') { run.activeMs += Date.now() - run.onSince; run.phase = 'idle'; } }
 function stopShowcase() { if (run) run.tok.stop = true; }
-function setPlay(on) { $('#playIco').hidden = on; $('#stopIco').hidden = !on; $('#inv-play').title = on ? '停止' : '开始'; $('#inv-play').setAttribute('aria-label', on ? '停止盘点' : '开始盘点'); $('#inv-gear').disabled = on; refreshParticipants(); }
+function setPlay(on) { $('#playIco').toggleAttribute('hidden', on); $('#stopIco').toggleAttribute('hidden', !on); // SVG elements have no .hidden property
+  $('#inv-play').title = on ? '停止' : '开始'; $('#inv-play').setAttribute('aria-label', on ? '停止盘点' : '开始盘点'); $('#inv-gear').disabled = on; refreshParticipants(); }
 $('#inv-play').onclick = () => run ? stopShowcase() : startShowcase();
 handlers.rospec = d => { if (!run || !run.parts.includes(d.id) || O.scen !== 'gpi' || run.phase !== 'on') return; run.gotRospec = true; run.gpiOn = d.ev === 'start'; addLog({ id: d.id, level: 'info', msg: d.ev === 'start' ? 'GPI 启动：开始读取' : 'GPI 停止：停止读取', ts: d.ts });
   if (d.ev === 'start') { if (O.gpiReset) { run.t0 = Date.now(); } run.onSince = Date.now(); } else { run.activeMs += Date.now() - run.onSince; }
