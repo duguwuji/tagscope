@@ -310,7 +310,7 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
       <div class="fld"><label for="da-nick">昵称: <i>（可选）</i></label><input type="text" id="da-nick"><div class="err" id="da-nerr" hidden>昵称必须唯一</div></div>
       <div class="fld"><label for="da-if">数据源接口:</label><select id="da-if"><option value="llrp">Impinj LLRP 接口</option><option value="rest">Impinj IoT 设备接口（R700 REST）</option><option value="sim">模拟读写器（无需硬件）</option></select></div>
       <div class="fld da-sim"><label for="da-simn">模拟标签数量:</label><input type="number" id="da-simn" min="1" max="2000" value="40"></div>
-      <div class="fld da-bridge"><label for="da-bridge">桥接服务地址:</label><input type="text" id="da-bridge" placeholder="http://localhost:8080" spellcheck="false"><div class="note">网页无法直接建立 LLRP TCP 连接，需要在可访问读写器的电脑上运行 TagScope 桥接服务（node server.js）。</div></div>
+      <div class="fld da-bridge"><label for="da-bridge">桥接服务地址:</label><input type="text" id="da-bridge" placeholder="http://localhost:8080" spellcheck="false"><div class="note" id="da-bnote"></div></div>
       <div class="pnl da-nsim"><div class="ph tog" id="da-advT"><span class="car">▼</span>高级选项</div><div class="pb" id="da-adv" hidden>
         <label class="row"><span>端口:</span><input type="number" id="da-port" placeholder="5084"></label>
         <div class="row da-rest"><span>认证方式:</span><select disabled><option>Basic</option></select></div>
