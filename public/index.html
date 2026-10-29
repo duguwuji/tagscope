@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Hill <Hill@iotrfid.top>">
+<meta name="copyright" content="© 2026 Hill (Hill@iotrfid.top)">
+<title>TagScope</title>
+<style>
+:root{--side:#2B3038;--side2:#353B45;--side-tx:#E9EBEE;--side-mu:#A3AAB5;--accent:#2783DE;--accent-soft:#E5F2FC;--tx:#2C2C2B;--mu:#6F6C67;--bd:#DCDAD6;--bg:#FFFFFF;--bar:#F4F4F3;--hd:#EDECEA;--ok:#2F8A5B;--warn:#B9651F;--err:#D4483B;--mono:Consolas,Menlo,monospace}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font:13px/1.4 "Segoe UI",-apple-system,"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
+button,input,select{font:inherit;color:inherit}
+.app{display:grid;grid-template-columns:248px 1fr;grid-template-rows:1fr 28px;height:100vh}
+/* ---------- sidebar ---------- */
+nav{grid-row:1;background:var(--side);color:var(--side-tx);display:flex;flex-direction:column;overflow:auto;min-height:0}
+.logo{display:flex;align-items:center;gap:10px;padding:16px 16px 14px;font-size:17px;font-weight:600;letter-spacing:.2px}
+.sec{padding:10px 0 6px;border-top:1px solid rgba(255,255,255,.08)}
+.sec-h{display:flex;align-items:center;justify-content:space-between;padding:0 10px 4px 16px;font-size:11.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--side-mu)}
+.ib{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--side-mu);cursor:pointer;display:inline-grid;place-items:center}
+.ib:hover:not(:disabled){background:var(--side2);color:#fff}.ib:disabled{opacity:.35;cursor:not-allowed}
+.nav-i{display:flex;align-items:center;gap:10px;width:100%;padding:8px 16px;border:0;background:transparent;color:var(--side-tx);cursor:pointer;text-align:left;font-size:13.5px;min-height:36px}
+.nav-i:hover:not(:disabled){background:var(--side2)}
+.nav-i[aria-current=page]{background:var(--side2);box-shadow:inset 3px 0 0 var(--accent)}
+.nav-i:disabled{color:#7D8590;cursor:not-allowed}
+.nav-i small{margin-left:auto;font-size:11px;color:var(--side-mu)}
+.ds{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 16px;min-height:40px}
+.ds .nm{flex:1;min-width:0;cursor:pointer}.ds .nm b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds .nm span{font-size:11.5px;color:var(--side-mu)}
+.ds-empty{padding:4px 16px 8px;color:var(--side-mu);font-size:12.5px}
+.sw{position:relative;width:34px;height:18px;flex:none}.sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+.sw span{position:absolute;inset:0;border-radius:9px;background:#5B626D;transition:.15s}.sw span::after{content:"";position:absolute;width:14px;height:14px;left:2px;top:2px;border-radius:50%;background:#fff;transition:.15s}
+.sw input:checked+span{background:var(--accent)}.sw input:checked+span::after{left:18px}.sw input:focus-visible+span{outline:2px solid #fff}
+.sw.busy span{background:#B98A3B}
+.side-foot{margin-top:auto;padding:12px 16px;font-size:11.5px;color:var(--side-mu);border-top:1px solid rgba(255,255,255,.08)}
+.side-foot a{color:var(--side-mu)}
+/* ---------- main ---------- */
+main{grid-row:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.view{display:flex;flex-direction:column;flex:1;min-height:0}
+.vh{display:flex;align-items:center;gap:6px;padding:10px 16px;border-bottom:1px solid var(--bd);background:var(--bar);flex-wrap:wrap}
+.vh h1{font-size:18px;font-weight:600;margin:0 14px 0 2px}
+.cb{width:36px;height:36px;border-radius:50%;border:1.5px solid currentColor;background:transparent;cursor:pointer;display:inline-grid;place-items:center;color:var(--tx)}
+.cb.play{color:var(--ok)}.cb.stop{color:var(--err)}
+.cb:disabled{color:#B9B7B2;cursor:not-allowed}
+.tb{height:32px;padding:0 10px;border:1px solid transparent;border-radius:6px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--tx)}
+.tb:hover:not(:disabled){background:var(--hd);border-color:var(--bd)}.tb[aria-pressed=true]{background:var(--accent-soft);border-color:#B9D9F5}
+.tb:disabled{opacity:.45;cursor:not-allowed}
+.vsep{width:1px;height:24px;background:var(--bd);margin:0 6px}
+.counters{margin-left:auto;display:flex;gap:22px}
+.ct{text-align:right}.ct b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}.ct span{font-size:11.5px;color:var(--mu)}
+.toi-bar{padding:6px 16px;background:#FFF6E8;border-bottom:1px solid #F0D9B5;font-size:12.5px;display:flex;gap:16px;align-items:center}
+.grid-wrap{flex:1;overflow:auto;min-height:0}
+table.g{border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums;min-width:100%}
+table.g th{position:sticky;top:0;z-index:1;background:var(--hd);border-bottom:1px solid var(--bd);border-right:1px solid var(--bd);padding:6px 8px;text-align:left;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none}
+table.g th[aria-sort=ascending]::after{content:" ▲";font-size:9px}table.g th[aria-sort=descending]::after{content:" ▼";font-size:9px}
+table.g td{padding:4px 8px;border-bottom:1px solid #ECEBE8;border-right:1px solid #F1F0EE;white-space:nowrap}
+table.g td.m{font-family:var(--mono)}table.g td.n{text-align:right}
+table.g tbody tr{cursor:default}table.g tbody tr.sel td{background:var(--accent-soft)!important}
+table.g tr.miss td{color:var(--mu);font-style:italic}
+.empty{padding:48px 16px;text-align:center;color:var(--mu)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px;padding:12px 16px}
+.card{border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:12px;cursor:default}
+.card .e{font-family:var(--mono);font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.card .r{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--mu);margin-top:4px}.card .r b{color:var(--tx);font-weight:500}
+.card.sel{outline:2px solid var(--accent)}
+/* memory showcase */
+.pad{padding:16px 20px;overflow:auto;flex:1}
+.fr{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mu)}
+input[type=text],input[type=number],input[type=password],select{height:32px;padding:0 8px;border:1px solid #C9C7C2;border-radius:4px;background:#fff;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.mono{font-family:var(--mono)}
+.btn{height:32px;padding:0 16px;border:1px solid #C9C7C2;border-radius:4px;background:#FAFAF9;cursor:pointer;white-space:nowrap}
+.btn:hover:not(:disabled){background:var(--hd)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}.btn.pri:hover:not(:disabled){filter:brightness(.94);background:var(--accent)}
+.btn.dng{color:var(--err)}
+.mem{display:grid;grid-template-columns:auto auto 1fr;gap:6px 14px;align-items:center;margin:8px 0 16px;font-family:var(--mono);font-size:13px}
+.mem .wl{color:var(--mu);font-size:11.5px;text-align:right}
+.mem .ws{display:flex;gap:4px;flex-wrap:wrap}
+.mem input{width:58px;height:30px;text-align:center;font-family:var(--mono);text-transform:uppercase;padding:0 4px}
+.mem input.x{color:var(--err)}.mem input.c{background:#F4F4F3;color:var(--mu)}
+.mem .asc{color:var(--mu);white-space:pre}
+.res{padding:8px 10px;border-radius:4px;background:var(--bar);font-family:var(--mono);font-size:12.5px;min-height:34px;overflow-wrap:anywhere}
+.res.ok{background:#E8F1EC;color:var(--ok)}.res.bad{background:#FCE9E7;color:var(--err)}
+details{border:1px solid var(--bd);border-radius:6px;margin-top:16px}details>summary{padding:8px 12px;cursor:pointer;font-weight:600}details>div{padding:4px 12px 12px}
+h2.s{font-size:14px;margin:20px 0 8px;font-weight:600}h2.s:first-child{margin-top:0}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;min-height:26px;color:var(--tx);font-size:13px}.chk input{margin:0;width:15px;height:15px;accent-color:var(--accent)}
+.cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:2px 12px;max-width:760px}
+.note{color:var(--mu);font-size:12px;margin:6px 0}
+/* status bar */
+footer{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 10px;background:#E9E8E6;border-top:1px solid var(--bd);font-size:12px;color:#55524D;min-width:0}
+footer .dot{width:8px;height:8px;border-radius:50%;background:#A9A6A0;display:inline-block;margin-right:6px}
+footer .dot.on{background:var(--ok)}footer .dot.run{background:var(--accent)}
+footer .msg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+footer .msg.error{color:var(--err)}footer .msg.warn{color:var(--warn)}
+footer button{border:0;background:transparent;cursor:pointer;font-size:12px;color:#55524D;height:24px;padding:0 6px;border-radius:4px}footer button:hover{background:#DAD8D5}
+.sim-tag{background:#FBEBDE;color:var(--warn);padding:1px 8px;border-radius:10px;font-weight:600}
+/* log drawer */
+.drawer{position:fixed;left:248px;right:0;bottom:28px;height:240px;background:#fff;border-top:1px solid var(--bd);box-shadow:0 -4px 12px rgba(0,0,0,.06);display:flex;flex-direction:column;z-index:15}
+.drawer .dh{display:flex;align-items:center;gap:12px;padding:4px 12px;border-bottom:1px solid var(--bd);background:var(--bar);font-weight:600}
+.drawer .dh span{flex:1}
+.log{flex:1;overflow:auto;font-family:var(--mono);font-size:12px;padding:6px 12px;line-height:1.55}
+.log div{white-space:pre-wrap;overflow-wrap:anywhere}.log .t{color:var(--mu)}.log .warn{color:var(--warn)}.log .error{color:var(--err)}.log .debug{color:#8E8B85}
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(20,22,26,.45);display:grid;place-items:center;z-index:30;padding:16px}
+.dlg{background:#fff;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:min(620px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column}
+.dlg>h3{margin:0;padding:14px 18px;font-size:16px;font-weight:600;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px}
+.dlg>h3 span{flex:1}
+.dlg .bd{padding:16px 18px;overflow:auto}
+.dlg .ft{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--bd);background:var(--bar);border-radius:0 0 8px 8px}
+.dlg .ft .l{margin-right:auto}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}.g2 .s2{grid-column:span 2}
+.tabs{display:flex;border-bottom:1px solid var(--bd);margin:-4px 0 14px}
+.tabs button{border:0;background:transparent;padding:8px 14px;cursor:pointer;border-bottom:2px solid transparent;color:var(--mu);font-weight:600}
+.tabs button[aria-selected=true]{color:var(--tx);border-color:var(--accent)}
+.ants{border-collapse:collapse;width:100%}.ants th{font-size:12px;color:var(--mu);font-weight:500;text-align:left;padding:0 6px 4px}.ants td{padding:2px 6px}.ants input,.ants select{width:100%}
+/* menus */
+.menu{position:fixed;z-index:40;background:#fff;border:1px solid var(--bd);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:4px 0;min-width:190px;max-height:70vh;overflow:auto}
+.menu button,.menu label{display:flex;align-items:center;gap:8px;width:100%;padding:6px 14px;border:0;background:transparent;text-align:left;cursor:pointer;font-size:13px}
+.menu button:hover,.menu label:hover{background:var(--accent-soft)}
+.menu hr{border:0;border-top:1px solid var(--bd);margin:4px 0}
+.toast{position:fixed;right:20px;bottom:44px;max-width:440px;padding:10px 14px;border-radius:6px;background:var(--err);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.2);opacity:0;transform:translateY(6px);transition:.2s;pointer-events:none;z-index:50}
+.toast.show{opacity:1;transform:none}
+.offline{padding:10px 16px;background:#FBEBDE;color:#8A4A14;border-bottom:1px solid #F0D2B5}
+@media (max-width:820px){html,body{overflow:auto;height:auto}.app{grid-template-columns:1fr;grid-template-rows:auto auto 28px;height:auto;min-height:100vh}nav{grid-row:1}main{grid-row:2;min-height:70vh}footer{grid-column:1}.drawer{left:0}.counters{margin-left:0;width:100%;justify-content:space-between;order:9}.ct{text-align:left}.g2{grid-template-columns:1fr}.g2 .s2{grid-column:auto}.app{grid-template-rows:auto auto auto}footer{flex-wrap:wrap;padding:6px 10px;gap:6px 12px}footer .msg{flex-basis:100%;order:5}footer button{white-space:nowrap}.sb-copy{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<nav aria-label="主菜单">
+  <div class="logo"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="6" fill="#2783DE"/><path d="M8 17.5a7 7 0 0 1 0-9M11 15a3.5 3.5 0 0 1 0-4M18 17.5a7 7 0 0 0 0-9M15 15a3.5 3.5 0 0 0 0-4" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="13" cy="13" r="1.4" fill="#fff"/></svg>TagScope</div>
+  <div class="sec">
+    <div class="sec-h">数据源<span><button class="ib" title="自动发现（网页版不可用）" aria-label="自动发现读写器" disabled><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6"/></svg></button><button class="ib" id="ds-add" title="添加数据源" aria-label="添加数据源"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.8"/></svg></button></span></div>
+    <div id="dsList"></div>
+  </div>
+  <div class="sec">
+    <div class="sec-h">展示</div>
+    <button class="nav-i" data-view="inventory" aria-current="page"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6h12M2 9.5h12M6 2.5v11"/></svg>盘点</button>
+    <button class="nav-i" disabled title="需要 xArray / xSpan 网关"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>定位<small>xArray</small></button>
+    <button class="nav-i" disabled title="需要 xArray / xSpan 网关"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5h11M10 2.5l3 3-3 3M14 10.5H3M6 7.5l-3 3 3 3"/></svg>方向<small>xSpan</small></button>
+    <button class="nav-i" data-view="memory"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1.5" width="10" height="13" rx="1.5"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3"/></svg>标签存储</button>
+  </div>
+  <div class="sec">
+    <div class="sec-h">关注标签<span><button class="ib" id="toi-add" title="载入关注标签文件" aria-label="载入关注标签文件"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.8"/></svg></button></span></div>
+    <div id="toiList"><div class="ds-empty">未载入文件</div></div>
+    <input type="file" id="toi-file" accept=".txt,.csv" hidden>
+  </div>
+  <div class="sec">
+    <div class="sec-h">设置</div>
+    <button class="nav-i" data-view="appset"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg>应用设置</button>
+    <button class="nav-i" data-view="logging"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h9M4 8h9M4 13h9"/><circle cx="1.8" cy="3" r=".6"/><circle cx="1.8" cy="8" r=".6"/><circle cx="1.8" cy="13" r=".6"/></svg>标签日志</button>
+    <button class="nav-i" data-view="about"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.8v.2"/></svg>关于</button>
+  </div>
+  <div class="side-foot">© 2026 Hill<br><a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a></div>
+</nav>
+
+<main>
+  <div class="offline" id="offline" hidden>未检测到 TagScope 桥接服务。请在本机运行 <b>node server.js</b>，然后打开 http://localhost:8080 。</div>
+
+  <!-- Inventory showcase -->
+  <section class="view" id="v-inventory" aria-labelledby="t-inv">
+    <div class="vh">
+      <h1 id="t-inv">盘点</h1>
+      <button class="cb play" id="b-start" title="开始" aria-label="开始盘点" disabled><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5l9 5.5-9 5.5z" fill="currentColor"/></svg></button>
+      <button class="cb stop" id="b-stop" title="停止" aria-label="停止盘点" disabled><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="currentColor"/></svg></button>
+      <span class="vsep"></span>
+      <button class="tb" id="b-clear" title="清除"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg> 清除</button>
+      <button class="tb" id="b-settings" title="读写器设置" disabled><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg> 设置</button>
+      <button class="tb" id="b-csv" title="导出 CSV"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M3 13h10"/></svg> 导出</button>
+      <span class="vsep"></span>
+      <button class="tb" id="vw-table" aria-pressed="true" title="表格视图"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6h12M2 9.5h12M6 2.5v11"/></svg> 表格</button>
+      <button class="tb" id="vw-list" aria-pressed="false" title="列表视图"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="4" rx="1"/><rect x="2" y="9.5" width="12" height="4" rx="1"/></svg> 列表</button>
+      <div class="counters">
+        <div class="ct"><b id="c-uniq">0</b><span>唯一标签</span></div>
+        <div class="ct"><b id="c-total">0</b><span>总读取</span></div>
+        <div class="ct"><b id="c-rate">0</b><span>读取/秒</span></div>
+        <div class="ct"><b id="c-time">00:00:00</b><span>运行时间</span></div>
+      </div>
+    </div>
+    <div class="toi-bar" id="toiBar" hidden><span id="toiTxt"></span><label class="chk"><input type="checkbox" id="toiOnly">只显示关注标签</label></div>
+    <div class="grid-wrap" id="gridWrap">
+      <table class="g" id="grid"><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table>
+      <div class="cards" id="cards" hidden></div>
+      <div class="empty" id="empty">添加并启用数据源，然后点击 ▶ 开始盘点。右键列标题可选择显示的列，右键标签可访问标签存储。</div>
+    </div>
+  </section>
+
+  <!-- Tag memory showcase -->
+  <section class="view" id="v-memory" hidden aria-labelledby="t-mem">
+    <div class="vh"><h1 id="t-mem">标签存储</h1></div>
+    <div class="pad">
+      <div class="fr">
+        <label class="f" style="flex:1;min-width:260px">EPC<input type="text" id="m-epc" class="mono" placeholder="在盘点列表中右键标签 → 标签存储访问"></label>
+        <label class="f">访问密码<input type="text" id="m-pwd" class="mono" value="00000000" maxlength="8" style="width:110px"></label>
+        <label class="f">超时（秒）<input type="number" id="m-to" value="5" min="1" max="60" style="width:80px"></label>
+      </div>
+      <div class="fr">
+        <label class="f">存储区<select id="m-bank"><option value="reserved">Reserved</option><option value="epc" selected>EPC</option><option value="tid">TID</option><option value="user">User</option></select></label>
+        <label class="f">字数<select id="m-cnt"></select></label>
+        <label class="f">字偏移<select id="m-off"></select></label>
+        <button class="btn pri" id="m-read" disabled>读取</button>
+        <button class="btn" id="m-write" disabled>写入</button>
+      </div>
+      <div class="mem" id="mem"></div>
+      <div class="res" id="m-res" aria-live="polite">读取结果会显示在这里。EPC 存储区的第 0、1 字分别是 CRC-16 和 PC。</div>
+      <details>
+        <summary>写 EPC、锁定与灭活</summary>
+        <div>
+          <div class="fr"><label class="f" style="flex:1;min-width:240px">新 EPC<input type="text" id="x-epc" class="mono"></label><button class="btn" id="x-wepc" disabled>写入 EPC</button></div>
+          <div class="fr">
+            <label class="f">存储区<select id="x-field"><option value="epc">EPC</option><option value="user">User</option><option value="access">访问密码</option><option value="kill">灭活密码</option><option value="tid">TID</option></select></label>
+            <label class="f">操作<select id="x-priv"><option value="lock">锁定</option><option value="unlock">解锁</option><option value="permalock">永久锁定</option><option value="permaunlock">永久解锁</option></select></label>
+            <button class="btn" id="x-lock" disabled>执行</button>
+          </div>
+          <div class="fr"><label class="f">灭活密码<input type="text" id="x-kpwd" class="mono" maxlength="8" style="width:120px"></label><button class="btn dng" id="x-kill" disabled>灭活标签</button></div>
+          <p class="note">锁定前请先写入非零访问密码。永久锁定和灭活都无法撤销。</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- Application settings -->
+  <section class="view" id="v-appset" hidden aria-labelledby="t-as">
+    <div class="vh"><h1 id="t-as">应用设置</h1></div>
+    <div class="pad">
+      <h2 class="s">表格视图列</h2><div class="cols" id="colsTable"></div>
+      <h2 class="s">列表视图字段</h2><div class="cols" id="colsList"></div>
+      <h2 class="s">显示</h2>
+      <label class="f" style="max-width:260px">标签变灰时间（秒）<input type="number" id="as-fade" value="10" min="1" max="120"></label>
+      <p class="note">与 ItemTest 一致：1 秒内读到的标签为白色，之后逐渐变深，达到设定时间后为最深的灰色。</p>
+    </div>
+  </section>
+
+  <!-- Tag logging -->
+  <section class="view" id="v-logging" hidden aria-labelledby="t-lg">
+    <div class="vh"><h1 id="t-lg">标签日志</h1></div>
+    <div class="pad">
+      <label class="chk"><input type="checkbox" id="lg-on">记录每次读取（保存在浏览器内存中）</label>
+      <div class="fr" style="margin-top:12px"><label class="f">文件名前缀<input type="text" id="lg-prefix" value="TagScope"></label>
+        <button class="btn" id="lg-dl">下载读取日志</button><button class="btn" id="lg-dlu">下载唯一标签日志</button><button class="btn" id="lg-clr">清空</button></div>
+      <p class="note" id="lg-info">已记录 0 条读取。</p>
+    </div>
+  </section>
+
+  <!-- About -->
+  <section class="view" id="v-about" hidden aria-labelledby="t-ab">
+    <div class="vh"><h1 id="t-ab">关于</h1></div>
+    <div class="pad" style="max-width:720px">
+      <h2 class="s">TagScope · RFID 标签观测台</h2>
+      <p>版本 1.1.0。网页版 RFID 读写器测试工具，界面和工作流程参照 Impinj ItemTest 2.x，支持 LLRP、Impinj IoT Device Interface 和模拟器三种数据源。</p>
+      <p><b>版权所有 © 2026 Hill</b><br>联系方式：<a href="mailto:Hill@iotrfid.top">Hill@iotrfid.top</a></p>
+      <p class="note">Impinj、ItemTest、Speedway、xArray 是 Impinj, Inc. 的商标。TagScope 是独立开发的软件，与 Impinj 没有隶属关系。</p>
+      <h2 class="s">读写器信息</h2><div id="aboutReader" class="note">未连接</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span><i class="dot" id="sb-dot"></i><span id="sb-state">未连接</span></span>
+  <span class="sim-tag" id="sb-sim" hidden>模拟数据</span>
+  <span class="msg" id="sb-msg"></span>
+  <button id="sb-log">日志</button>
+  <span class="sb-copy">© 2026 Hill · Hill@iotrfid.top</span>
+</footer>
+</div>
+
+<div class="drawer" id="drawer" hidden>
+  <div class="dh"><span>日志</span><label class="chk" style="font-weight:400"><input type="checkbox" id="lgDebug">显示协议细节</label><button class="btn" id="lgClear" style="height:26px">清空</button><button class="btn" id="lgClose" style="height:26px">关闭</button></div>
+  <div class="log" id="log"></div>
+</div>
+
+<!-- Add data source -->
+<div class="ov" id="dlg-ds" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dsT">
+  <h3><span id="dsT">添加数据源</span></h3>
+  <div class="bd"><div class="g2">
+    <label class="f s2">主机名或 IP 地址<input type="text" id="d-host" class="mono" placeholder="impinj-xx-xx-xx 或 192.168.1.100" autocomplete="off"></label>
+    <label class="f s2">昵称（可选）<input type="text" id="d-nick" placeholder="例如：仓库门口 R700"></label>
+    <label class="f s2">数据源接口<select id="d-if"><option value="llrp">LLRP</option><option value="rest">Impinj IoT Device Interface（R700 / R660）</option><option value="sim">模拟器（无硬件）</option></select></label>
+    <label class="f d-nsim">端口<input type="number" id="d-port" placeholder="5084"></label>
+    <label class="f d-rest">协议<select id="d-tls"><option value="1">HTTPS</option><option value="0">HTTP</option></select></label>
+    <label class="f d-rest">用户名<input type="text" id="d-user" value="root" autocomplete="username"></label>
+    <label class="f d-rest">密码<input type="password" id="d-pass" placeholder="impinj" autocomplete="current-password"></label>
+    <label class="chk s2 d-rest"><input type="checkbox" id="d-ins" checked>接受读写器自签名证书</label>
+    <label class="f s2 d-sim">模拟标签数量<input type="number" id="d-sim" value="40" min="1" max="2000"></label>
+  </div><p class="note d-rest">IoT 接口的功能较少，不能访问标签存储。需要完整功能时，请在读写器网页中切换为 LLRP 接口。</p></div>
+  <div class="ft"><button class="btn" data-close>取消</button><button class="btn pri" id="d-ok">添加数据源</button></div>
+</div></div>
+
+<!-- Reader settings -->
+<div class="ov" id="dlg-set" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="setT" style="width:min(680px,100%)">
+  <h3><span id="setT">读写器设置</span><label class="f" style="flex-direction:row;align-items:center;gap:6px;font-weight:400">配置<select id="p-sel"></select></label></h3>
+  <div class="bd">
+    <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-p="st-inv">盘点</button><button role="tab" aria-selected="false" data-p="st-ant">天线</button><button role="tab" aria-selected="false" data-p="st-flt">过滤</button></div>
+    <div id="st-inv" class="g2">
+      <label class="f s2">天线（例如 1,2,3,4）<input type="text" id="s-ants" value="1"></label>
+      <label class="f s2">RF 模式<select id="s-mode"></select></label>
+      <label class="f s2" id="s-mc-w" hidden>自定义模式编号<input type="number" id="s-mc" value="0"></label>
+      <label class="f">预计标签数量<input type="number" id="s-pop" value="32" min="1"></label>
+      <label class="f">Session<select id="s-ses"><option>0</option><option selected>1</option><option>2</option><option>3</option></select></label>
+      <label class="f s2">搜索模式<select id="s-search"><option value="0">读写器默认</option><option value="1">单目标</option><option value="2" selected>双目标</option><option value="3">单目标 + 抑制（TagFocus）</option><option value="5">单目标重置</option><option value="6">双目标 + B→A 选择</option></select></label>
+      <label class="f">功率（dBm）<input type="number" id="s-pwr" value="30" step="0.25"></label>
+      <label class="f">接收灵敏度（dBm）<select id="s-rx"><option value="">最大</option></select></label>
+      <label class="f">运行时长（秒，0 = 持续）<input type="number" id="s-dur" value="0" min="0"></label>
+      <span></span>
+      <label class="chk"><input type="checkbox" id="s-fastid">FastID（上报 TID）</label>
+      <label class="chk"><input type="checkbox" id="s-dop">上报多普勒频移</label>
+    </div>
+    <div id="st-ant" hidden>
+      <p class="note" style="margin-top:0">单独设置某个天线的功率和灵敏度，留空则使用“盘点”页的值。</p>
+      <table class="ants"><thead><tr><th>天线</th><th>状态</th><th>功率 dBm</th><th>灵敏度 dBm</th></tr></thead><tbody id="antBody"></tbody></table>
+    </div>
+    <div id="st-flt" class="g2" hidden>
+      <label class="chk s2"><input type="checkbox" id="f-on">启用过滤</label>
+      <label class="f">存储区<select id="f-bank"><option value="epc">EPC</option><option value="tid">TID</option><option value="user">User</option></select></label>
+      <label class="f">动作<select id="f-act"><option value="include">只读匹配标签</option><option value="exclude">排除匹配标签</option></select></label>
+      <label class="f">起始位<input type="number" id="f-ptr" value="32" min="0"></label>
+      <label class="f">长度（位，可选）<input type="number" id="f-len" placeholder="自动"></label>
+      <label class="f s2">掩码（十六进制）<input type="text" id="f-mask" class="mono" placeholder="例如 E280"></label>
+      <p class="note s2">EPC 存储区第 32 位开始是 EPC 本体。没有读到标签时，请先检查过滤是否被误开启。</p>
+    </div>
+  </div>
+  <div class="ft"><button class="btn l" id="p-save">另存为新配置</button><button class="btn" data-close>取消</button><button class="btn pri" id="s-ok">确定</button></div>
+</div></div>
+
+<div class="menu" id="menu" hidden role="menu"></div>
+<div class="toast" id="toast" role="alert"></div>
+
+<script>
+'use strict';
+/* TagScope — © 2026 Hill (Hill@iotrfid.top) */
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = n => Number(n).toLocaleString('zh-CN');
+const tstr = ts => ts ? new Date(ts).toLocaleTimeString('zh-CN',{hour12:false})+'.'+String(ts%1000).padStart(3,'0') : '';
+const DEFAULT_MODES=[[0,'Max Throughput'],[1,'Hybrid'],[2,'Dense Reader M4'],[3,'Dense Reader M8'],[4,'MaxMiller'],[1000,'AutoSet Dense Reader'],[1002,'AutoSet Static'],[1003,'AutoSet Static Fast'],[1004,'AutoSet Static DRM']].map(([id,n])=>({id,label:`${id} · ${n}`}));
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),5000);}
+async function api(p,b){const r=await fetch('/api/'+p,{method:b===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},body:b===undefined?undefined:JSON.stringify(b)});const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j;}
+const store = { get(k,d){ try{ const v=localStorage.getItem('tagscope.'+k); return v==null?d:JSON.parse(v);}catch(_){return d;} }, set(k,v){ localStorage.setItem('tagscope.'+k, JSON.stringify(v)); } };
+
+// ---------- state ----------
+let S={connected:false,running:false,info:null}, busy=false;
+let source = store.get('source', null);
+let cfg = store.get('cfg', { ants:'1', mode:1002, modeCustom:0, pop:32, session:1, search:2, power:30, rx:'', duration:0, fastId:false, doppler:false, per:{}, filter:{enabled:false,bank:'epc',action:'include',pointer:32,len:'',mask:''} });
+let profiles = store.get('profiles', {});
+let tags=new Map(), order=0, totalReads=0, sec=0, rateNow=0, selected=null, toi=null, readLog=[];
+let sort={key:'idx',dir:1}, view='table', elapsed=0;
+
+// ---------- columns (ItemTest names) ----------
+const COLS=[
+ {k:'idx',l:'#',n:1,on:1},{k:'epc',l:'EPC',m:1,on:1},{k:'tid',l:'TID',m:1,on:1},{k:'pc',l:'PC',m:1,on:0},{k:'count',l:'读取次数',n:1,on:1},
+ {k:'from',l:'最后读取自',on:1},{k:'first',l:'首次读取',on:1,f:tstr},{k:'last',l:'最后读取',on:1,f:tstr},{k:'since',l:'距上次读取（秒）',n:1,on:1,f:v=>(v/1000).toFixed(1)},
+ {k:'rssi',l:'最近 RSSI',n:1,on:1,f:v=>v.toFixed(1)},{k:'avg',l:'RSSI 平均',n:1,on:1,f:v=>v.toFixed(1)},{k:'max',l:'RSSI 最大',n:1,on:1,f:v=>v.toFixed(1)},{k:'min',l:'RSSI 最小',n:1,on:1,f:v=>v.toFixed(1)},
+ {k:'antenna',l:'天线',n:1,on:1},{k:'power',l:'功率',n:1,on:1,f:v=>v.toFixed(2)},{k:'phase',l:'相位角',n:1,on:1,f:v=>(+v).toFixed(1)},{k:'doppler',l:'多普勒频率',n:1,on:1,f:v=>(+v).toFixed(2)},
+ {k:'freq',l:'频率 MHz',n:1,on:0,f:v=>(+v).toFixed(2)},{k:'rate',l:'读速 /秒',n:1,on:0,f:v=>v.toFixed(1)}];
+let colOn = store.get('cols', Object.fromEntries(COLS.map(c=>[c.k,!!c.on])));
+let listOn = store.get('listCols', {tid:true,count:true,antenna:true,rssi:true,last:true,from:false,avg:false,phase:false});
+
+// ---------- navigation ----------
+function show(v){ $$('.view').forEach(x=>x.hidden = x.id!=='v-'+v); $$('.nav-i[data-view]').forEach(b=>b.toggleAttribute('aria-current', b.dataset.view===v)); $$('.nav-i[data-view]').forEach(b=>{ if(b.dataset.view===v) b.setAttribute('aria-current','page'); }); if(v==='inventory') render(true); }
+$$('.nav-i[data-view]').forEach(b=>b.onclick=()=>show(b.dataset.view));
+
+// ---------- data source ----------
+function renderSource(){
+  const el=$('#dsList');
+  if(!source){ el.innerHTML='<div class="ds-empty">点击 + 添加读写器</div>'; return; }
+  const ifn={llrp:'LLRP',rest:'IoT 接口',sim:'模拟器'}[source.driver];
+  el.innerHTML=`<div class="ds"><div class="nm" id="ds-open" title="读写器设置" tabindex="0"><b>${esc(source.nick||source.host||'模拟读写器')}</b><span>${ifn}${S.connected?' · '+(S.running?'盘点中':'已连接'):''}</span></div>
+   <label class="sw ${busy?'busy':''}" title="启用 / 停用"><input type="checkbox" id="ds-sw" aria-label="启用数据源" ${S.connected?'checked':''} ${busy?'disabled':''}><span></span></label>
+   <button class="ib" id="ds-gear" title="读写器设置" aria-label="读写器设置"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button><button class="ib" id="ds-del" title="移除数据源" aria-label="移除数据源"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`;
+  $('#ds-sw').onchange=e=>toggleSource(e.target.checked);
+  $('#ds-gear').onclick=openSettings; $('#ds-open').onclick=openSettings; $('#ds-open').onkeydown=e=>{if(e.key==='Enter')openSettings();};
+  $('#ds-del').onclick=async()=>{ if(S.connected) await toggleSource(false); source=null; store.set('source',null); renderSource(); };
+}
+async function toggleSource(on){
+  busy=true; renderSource();
+  try{
+    if(on){ const s=source; applyState(await api('connect',{driver:s.driver,host:s.host,port:s.port||undefined,tls:s.tls,user:s.user,pass:s.pass||'impinj',insecure:s.insecure,simTags:s.simTags})); }
+    else applyState(await api('disconnect',{}));
+  }catch(e){ toast(e.message); }
+  busy=false; renderSource();
+}
+function dsUI(){ const d=$('#d-if').value; $$('.d-rest').forEach(e=>e.hidden=d!=='rest'); $$('.d-sim').forEach(e=>e.hidden=d!=='sim'); $$('.d-nsim').forEach(e=>e.hidden=d==='sim'); $('#d-port').placeholder=d==='rest'?($('#d-tls').value==='1'?'443':'80'):'5084'; }
+$('#d-if').onchange=dsUI; $('#d-tls').onchange=dsUI;
+$('#ds-add').onclick=()=>{ const s=source||{}; $('#d-host').value=s.host||''; $('#d-nick').value=s.nick||''; $('#d-if').value=s.driver||'llrp'; $('#d-port').value=s.port||''; $('#d-tls').value=s.tls===false?'0':'1'; $('#d-user').value=s.user||'root'; $('#d-ins').checked=s.insecure!==false; $('#d-sim').value=s.simTags||40; dsUI(); openDlg('#dlg-ds'); $('#d-host').focus(); };
+$('#d-ok').onclick=async()=>{ const d=$('#d-if').value; if(d!=='sim'&&!$('#d-host').value.trim()) return toast('请输入主机名或 IP 地址');
+  if(S.connected) await toggleSource(false);
+  source={driver:d,host:$('#d-host').value.trim(),nick:$('#d-nick').value.trim(),port:+$('#d-port').value||0,tls:$('#d-tls').value==='1',user:$('#d-user').value,pass:$('#d-pass').value,insecure:$('#d-ins').checked,simTags:+$('#d-sim').value};
+  store.set('source',{...source,pass:''}); closeDlg('#dlg-ds'); renderSource(); toggleSource(true); };
+
+// ---------- dialogs ----------
+function openDlg(id){ $(id).hidden=false; }
+function closeDlg(id){ $(id).hidden=true; }
+$$('[data-close]').forEach(b=>b.onclick=()=>b.closest('.ov').hidden=true);
+$$('.ov').forEach(o=>o.addEventListener('mousedown',e=>{ if(e.target===o) o.hidden=true; }));
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ $$('.ov').forEach(o=>o.hidden=true); hideMenu(); } });
+$$('#dlg-set .tabs button').forEach(b=>b.onclick=()=>{ $$('#dlg-set .tabs button').forEach(x=>{x.setAttribute('aria-selected',x===b); $('#'+x.dataset.p).hidden=x!==b;}); });
+
+// ---------- reader settings ----------
+function fillSettings(c){
+  const info=S.info||{}, modes=info.modes&&info.modes.length?info.modes:DEFAULT_MODES;
+  $('#s-mode').innerHTML=modes.map(m=>`<option value="${m.id}">${esc(m.label)}</option>`).join('')+'<option value="custom">自定义…</option>';
+  $('#s-mode').value=[...$('#s-mode').options].some(o=>o.value==String(c.mode))?String(c.mode):'custom'; $('#s-mc').value=c.mode; $('#s-mc-w').hidden=$('#s-mode').value!=='custom';
+  const rx=[...new Set((info.rxSensitivity||[]).map(r=>r.dbm))].sort((a,b)=>a-b);
+  const rxOpts='<option value="">最大</option>'+rx.map(d=>`<option value="${d}">${d}</option>`).join('');
+  $('#s-rx').innerHTML=rxOpts; $('#s-rx').value=String(c.rx??'');
+  $('#s-ants').value=c.ants; $('#s-pop').value=c.pop; $('#s-ses').value=c.session; $('#s-search').value=c.search; $('#s-pwr').value=c.power; $('#s-pwr').min=info.txPowerMin??10; $('#s-pwr').max=info.txPowerMax??32.5;
+  $('#s-dur').value=c.duration; $('#s-fastid').checked=c.fastId; $('#s-dop').checked=c.doppler;
+  const n=Math.min(info.antennaCount||4,32), conn=Object.fromEntries((info.antennas||[]).map(a=>[a.id,a.connected]));
+  $('#antBody').innerHTML=Array.from({length:n},(_,i)=>{const id=i+1,p=c.per[id]||{}; return `<tr data-id="${id}"><td>${id}</td><td>${conn[id]===undefined?'—':conn[id]?'<span style="color:var(--ok)">● 已连接</span>':'<span style="color:var(--mu)">○ 未检测到</span>'}</td>
+    <td><input type="number" class="pp" step="0.25" placeholder="${c.power}" value="${p.power??''}" aria-label="天线 ${id} 功率"></td><td><select class="pr" aria-label="天线 ${id} 灵敏度"><option value="">（默认）</option>${rx.map(d=>`<option value="${d}" ${String(p.rx)===String(d)?'selected':''}>${d}</option>`).join('')}</select></td></tr>`;}).join('');
+  const f=c.filter; $('#f-on').checked=f.enabled; $('#f-bank').value=f.bank; $('#f-act').value=f.action; $('#f-ptr').value=f.pointer; $('#f-len').value=f.len; $('#f-mask').value=f.mask;
+  $('#p-sel').innerHTML='<option value="">（当前设置）</option>'+Object.keys(profiles).map(k=>`<option>${esc(k)}</option>`).join('');
+}
+$('#s-mode').onchange=()=>$('#s-mc-w').hidden=$('#s-mode').value!=='custom';
+$('#p-sel').onchange=()=>{ const p=profiles[$('#p-sel').value]; if(p) fillSettings(JSON.parse(JSON.stringify(p))); };
+function readSettings(){
+  const m=$('#s-mode').value, per={};
+  $$('#antBody tr').forEach(tr=>{ const pw=tr.querySelector('.pp').value, rx=tr.querySelector('.pr').value; if(pw!==''||rx!=='') per[tr.dataset.id]={power:pw===''?undefined:+pw, rx:rx===''?undefined:+rx}; });
+  return { ants:$('#s-ants').value, mode:m==='custom'?+$('#s-mc').value:+m, pop:+$('#s-pop').value, session:+$('#s-ses').value, search:+$('#s-search').value, power:+$('#s-pwr').value, rx:$('#s-rx').value===''?'':+$('#s-rx').value,
+    duration:+$('#s-dur').value, fastId:$('#s-fastid').checked, doppler:$('#s-dop').checked, per,
+    filter:{enabled:$('#f-on').checked,bank:$('#f-bank').value,action:$('#f-act').value,pointer:+$('#f-ptr').value,len:$('#f-len').value,mask:$('#f-mask').value.replace(/\s/g,'')} };
+}
+function antList(c){ return [...new Set(String(c.ants).split(/[\s,，;]+/).map(Number).filter(n=>n>0&&n<=64))].sort((a,b)=>a-b); }
+function wire(c){ const max=Math.max(4,S.info?.antennaCount||4), on=new Set(antList(c));
+  return { mode:c.mode, searchMode:c.search, session:c.session, tagPopulation:c.pop, duration:c.duration, fastId:c.fastId, doppler:c.doppler,
+    antennas:Array.from({length:max},(_,i)=>{const id=i+1,p=c.per[id]||{}; return {id,enabled:on.has(id),txDbm:p.power??c.power,rxDbm:p.rx??c.rx};}),
+    filter:{enabled:c.filter.enabled,bank:c.filter.bank,action:c.filter.action,pointer:c.filter.pointer,maskBits:c.filter.len,mask:c.filter.mask} }; }
+function openSettings(){ fillSettings(cfg); $$('#dlg-set .tabs button')[0].click(); openDlg('#dlg-set'); }
+$('#b-settings').onclick=openSettings;
+$('#s-ok').onclick=async()=>{ const c=readSettings(); if(!antList(c).length) return toast('请至少填写一个天线编号'); cfg=c; store.set('cfg',cfg); closeDlg('#dlg-set');
+  if(S.connected){ try{ applyState(await api('config',wire(cfg))); addLog({level:'info',msg:'读写器设置已应用'+(S.running?'，盘点已重新启动':''),ts:Date.now()}); }catch(e){ toast(e.message); } } };
+$('#p-save').onclick=()=>{ const n=prompt('配置名称',`配置 ${Object.keys(profiles).length+1}`); if(!n) return; profiles[n]=readSettings(); store.set('profiles',profiles); fillSettings(profiles[n]); $('#p-sel').value=n; };
+
+// ---------- state from server ----------
+function applyState(s){
+  const wasConn=S.connected; S=s;
+  $('#b-start').disabled=!s.connected||s.running; $('#b-stop').disabled=!s.running; $('#b-settings').disabled=!source;
+  ['#m-read','#m-write','#x-wepc','#x-lock','#x-kill'].forEach(id=>$(id).disabled=!s.connected||!s.info?.supportsAccess);
+  $('#sb-dot').className='dot'+(s.running?' run':s.connected?' on':''); $('#sb-state').textContent=s.running?'盘点中':s.connected?`已连接 · ${s.info.model}`:'未连接';
+  $('#sb-sim').hidden=s.driver!=='sim';
+  $('#aboutReader').innerHTML=s.connected?Object.entries({驱动:s.info.driver,型号:s.info.model,'序列号 / ID':s.info.serial||'—',固件:s.info.firmware||'—',天线端口:s.info.antennaCount,功率范围:`${s.info.txPowerMin} – ${s.info.txPowerMax} dBm`,'Impinj 扩展':s.info.impinjExtensions===undefined?'—':s.info.impinjExtensions?'已启用':'不可用'}).map(([k,v])=>`${k}：<span class="mono">${esc(v)}</span>`).join('<br>'):'未连接';
+  if(s.connected&&!wasConn&&S.info&&source&&source.driver!==s.driver){}
+  renderSource();
+}
+
+// ---------- events ----------
+function connectEvents(){ const es=new EventSource('/api/events');
+  es.addEventListener('state',e=>{ $('#offline').hidden=true; applyState(JSON.parse(e.data)); });
+  es.addEventListener('log',e=>addLog(JSON.parse(e.data)));
+  es.addEventListener('tags',e=>ingest(JSON.parse(e.data)));
+  es.onerror=()=>{ if(es.readyState===2) $('#offline').hidden=false; }; }
+if(location.protocol==='file:') $('#offline').hidden=false; else connectEvents();
+
+function ingest(b){
+  totalReads+=b.total; sec+=b.total; const from=source?.nick||source?.host||'模拟读写器';
+  for(const r of b.reads){
+    let t=tags.get(r.epc);
+    if(!t){ t={idx:++order,epc:r.epc,count:0,first:r.firstTs,sum:0,n:0,max:-999,min:999}; tags.set(r.epc,t); }
+    t.count+=r.count; t.last=r.ts; t.from=from; t.antenna=r.antenna; t.rssi=r.rssi; t.sum+=r.rssiSum||0; t.n+=r.rssiN||0;
+    if(r.maxRssi!=null) t.max=Math.max(t.max,r.maxRssi); if(r.minRssi!=null) t.min=Math.min(t.min,r.minRssi);
+    t.tid=r.tid||t.tid; t.pc=r.pc||t.pc; t.phase=r.phase; t.doppler=r.doppler; t.freq=r.freq;
+    const w=wire(cfg).antennas.find(a=>a.id===r.antenna); t.power=w?+w.txDbm:undefined;
+    if($('#lg-on').checked){ readLog.push([new Date(r.ts).toISOString(),r.epc,r.tid||'',r.antenna,r.count,r.rssi??'',r.phase??'',r.freq??'']); if(readLog.length>500000) readLog.shift(); }
+  }
+}
+setInterval(()=>{ rateNow=sec; sec=0; $('#lg-info').textContent=`已记录 ${fmt(readLog.length)} 条读取。`; },1000);
+
+// ---------- table ----------
+function cell(t,c){ let v = c.k==='since'?Date.now()-t.last : c.k==='avg'?(t.n?t.sum/t.n:undefined) : c.k==='max'?(t.max>-999?t.max:undefined) : c.k==='min'?(t.min<999?t.min:undefined) : c.k==='rate'?t.count/Math.max(1,(t.last-t.first)/1000) : t[c.k];
+  return v; }
+function rowsData(){ let r=[...tags.values()];
+  if(toi){ if($('#toiOnly').checked) r=r.filter(t=>toi.set.has(t.epc)); if($('#toiOnly').checked) for(const e of toi.set) if(!tags.has(e)) r.push({idx:'',epc:e,miss:true}); }
+  const c=COLS.find(x=>x.k===sort.key)||COLS[0];
+  r.sort((a,b)=>{ if(a.miss!==b.miss) return a.miss?1:-1; const x=cell(a,c),y=cell(b,c); if(x==null) return 1; if(y==null) return -1; return (x>y?1:x<y?-1:0)*sort.dir; }); return r; }
+function renderHead(){ $('#thead').innerHTML=COLS.filter(c=>colOn[c.k]).map(c=>`<th data-k="${c.k}" scope="col" ${sort.key===c.k?`aria-sort="${sort.dir>0?'ascending':'descending'}"`:''}>${c.l}</th>`).join(''); }
+function shade(t){ if(t.miss) return '#fff'; const fade=(+$('#as-fade').value||10)*1000, age=Date.now()-t.last; if(age<1000) return '#fff'; const k=Math.min(1,(age-1000)/Math.max(1,fade-1000)); const v=Math.round(255-k*(255-160)); return `rgb(${v},${v},${v-2})`; }
+function render(force){
+  if($('#v-inventory').hidden) return;
+  const r=rowsData(); $('#empty').hidden=r.length>0;
+  $('#c-uniq').textContent=fmt(tags.size); $('#c-total').textContent=fmt(totalReads); $('#c-rate').textContent=fmt(rateNow);
+  if(S.running&&S.startedAt) elapsed=Date.now()-S.startedAt; const s=Math.floor(elapsed/1000);
+  $('#c-time').textContent=[s/3600,s%3600/60,s%60].map(x=>String(Math.floor(x)).padStart(2,'0')).join(':');
+  if(toi){ const found=[...toi.set].filter(e=>tags.has(e)).length; $('#toiTxt').textContent=`关注标签（${toi.name}）：已读到 ${found} / ${toi.set.size}`; }
+  const lim=r.slice(0,2000), vis=COLS.filter(c=>colOn[c.k]);
+  if(view==='table'){
+    $('#tbody').innerHTML=lim.map(t=>{ const bg=shade(t); return `<tr data-epc="${t.epc}" class="${t.epc===selected?'sel':''} ${t.miss?'miss':''}">`+vis.map(c=>{ if(t.miss) return `<td class="${c.m?'m':''}" style="background:${bg}">${c.k==='epc'?t.epc:c.k==='count'?'未读到':''}</td>`; const v=cell(t,c); return `<td class="${c.m?'m':''}${c.n?' n':''}" style="background:${bg}">${v==null||v===''?'':esc(c.f?c.f(v):v)}</td>`; }).join('')+'</tr>'; }).join('');
+  } else {
+    const F=[['tid','TID'],['count','次数'],['antenna','天线'],['rssi','RSSI'],['avg','RSSI 平均'],['phase','相位'],['from','读取自'],['last','最后读取']];
+    $('#cards').innerHTML=lim.map(t=>`<div class="card ${t.epc===selected?'sel':''}" data-epc="${t.epc}" style="background:${shade(t)}"><div class="e">${t.epc}</div><div class="r">${t.miss?'未读到':F.filter(([k])=>listOn[k]).map(([k,l])=>{const c=COLS.find(x=>x.k===k),v=cell(t,c);return v==null?'':`<span>${l} <b>${esc(c.f?c.f(v):v)}</b></span>`;}).join('')}</div></div>`).join('');
+  }
+}
+renderHead(); setInterval(render,333);
+$('#thead').addEventListener('click',e=>{ const th=e.target.closest('th'); if(!th) return; const k=th.dataset.k; sort={key:k,dir:sort.key===k?-sort.dir:(['epc','tid','from','idx','first'].includes(k)?1:-1)}; renderHead(); render(); });
+$('#thead').addEventListener('contextmenu',e=>{ e.preventDefault(); showMenu(e.clientX,e.clientY, COLS.map(c=>`<label><input type="checkbox" data-col="${c.k}" ${colOn[c.k]?'checked':''}>${c.l}</label>`).join(''), m=>m.querySelectorAll('input').forEach(i=>i.onchange=()=>{ colOn[i.dataset.col]=i.checked; store.set('cols',colOn); renderHead(); render(); buildColSettings(); })); });
+function pick(e){ const r=e.target.closest('[data-epc]'); if(!r) return null; selected=r.dataset.epc; render(); return selected; }
+['#tbody','#cards'].forEach(id=>{ $(id).addEventListener('click',pick); $(id).addEventListener('dblclick',e=>{ if(pick(e)) openMemory(selected); });
+  $(id).addEventListener('contextmenu',e=>{ const epc=pick(e); if(!epc) return; e.preventDefault(); const t=tags.get(epc)||{};
+    showMenu(e.clientX,e.clientY,`<button data-a="mem">标签存储访问</button><hr><button data-a="epc">复制 EPC</button>${t.tid?'<button data-a="tid">复制 TID</button>':''}<button data-a="flt">以此 EPC 设置过滤</button>`, m=>m.querySelectorAll('button').forEach(b=>b.onclick=()=>{ hideMenu(); const a=b.dataset.a;
+      if(a==='mem') openMemory(epc); if(a==='epc') navigator.clipboard?.writeText(epc); if(a==='tid') navigator.clipboard?.writeText(t.tid);
+      if(a==='flt'){ cfg.filter={...cfg.filter,enabled:true,bank:'epc',pointer:32,mask:epc,len:''}; store.set('cfg',cfg); openSettings(); $$('#dlg-set .tabs button')[2].click(); } })); }); });
+function showMenu(x,y,html,bind){ const m=$('#menu'); m.innerHTML=html; m.hidden=false; const w=m.offsetWidth,h=m.offsetHeight; m.style.left=Math.min(x,innerWidth-w-8)+'px'; m.style.top=Math.min(y,innerHeight-h-8)+'px'; bind(m); }
+function hideMenu(){ $('#menu').hidden=true; }
+document.addEventListener('mousedown',e=>{ if(!e.target.closest('#menu')) hideMenu(); });
+$('#vw-table').onclick=()=>{ view='table'; $('#vw-table').setAttribute('aria-pressed',true); $('#vw-list').setAttribute('aria-pressed',false); $('#grid').hidden=false; $('#cards').hidden=true; render(); };
+$('#vw-list').onclick=()=>{ view='list'; $('#vw-list').setAttribute('aria-pressed',true); $('#vw-table').setAttribute('aria-pressed',false); $('#grid').hidden=true; $('#cards').hidden=false; render(); };
+
+// ---------- inventory actions ----------
+$('#b-start').onclick=async()=>{ try{ if(!antList(cfg).length) throw new Error('请在读写器设置中填写天线编号'); $('#b-start').disabled=true; applyState(await api('start',wire(cfg))); }catch(e){ toast(e.message); applyState(S); } };
+$('#b-stop').onclick=async()=>{ try{ applyState(await api('stop',{})); }catch(e){ toast(e.message); } };
+$('#b-clear').onclick=()=>{ tags.clear(); order=0; totalReads=0; selected=null; elapsed=0; if(S.running) S.startedAt=Date.now(); render(); };
+function dl(name,lines){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+function uniqueCsv(){ const vis=COLS.filter(c=>colOn[c.k]); return [vis.map(c=>c.l).join(',')].concat(rowsData().filter(t=>!t.miss).map(t=>vis.map(c=>{const v=cell(t,c); return v==null?'':(c.k==='first'||c.k==='last')?new Date(v).toISOString():c.f?c.f(v):v;}).join(','))); }
+$('#b-csv').onclick=()=>dl(`TagScope-${stamp()}.csv`,uniqueCsv());
+$('#lg-dl').onclick=()=>dl(`${$('#lg-prefix').value||'TagScope'}-reads-${stamp()}.csv`,['Time,EPC,TID,Antenna,Count,RSSI,Phase,FreqMHz',...readLog.map(r=>r.join(','))]);
+$('#lg-dlu').onclick=()=>dl(`${$('#lg-prefix').value||'TagScope'}-unique-${stamp()}.csv`,uniqueCsv());
+$('#lg-clr').onclick=()=>{ readLog=[]; $('#lg-info').textContent='已记录 0 条读取。'; };
+
+// ---------- tags of interest ----------
+$('#toi-add').onclick=()=>$('#toi-file').click();
+$('#toi-file').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; const txt=await f.text(); const set=new Set((txt.match(/[0-9A-Fa-f]{8,}/g)||[]).map(x=>x.toUpperCase()));
+  if(!set.size) return toast('文件中没有找到 EPC（每行一个十六进制 EPC）'); toi={name:f.name,set}; e.target.value=''; renderToi(); };
+function renderToi(){ $('#toiBar').hidden=!toi; $('#toiList').innerHTML=toi?`<div class="ds"><div class="nm"><b>${esc(toi.name)}</b><span>${toi.set.size} 个标签</span></div><button class="ib" id="toi-del" aria-label="移除关注标签"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`:'<div class="ds-empty">未载入文件</div>'; if(toi) $('#toi-del').onclick=()=>{ toi=null; $('#toiOnly').checked=false; renderToi(); }; render(); }
+$('#toiOnly').onchange=()=>render();
+
+// ---------- tag memory showcase ----------
+for(let i=1;i<=32;i++) $('#m-cnt').insertAdjacentHTML('beforeend',`<option ${i===8?'selected':''}>${i}</option>`);
+for(let i=0;i<32;i++) $('#m-off').insertAdjacentHTML('beforeend',`<option>${i}</option>`);
+function memGrid(data, fail){ const off=+$('#m-off').value, n=+$('#m-cnt').value, bank=$('#m-bank').value; let h='';
+  for(let r=0;r<n;r+=8){ const words=[]; for(let i=r;i<Math.min(n,r+8);i++){ const w=fail?'XXXX':(data?data.substr(i*4,4):''); words.push(`<input type="text" maxlength="4" data-w="${i}" value="${w}" class="${fail?'x':''}${bank==='epc'&&off+i<2?' c':''}" aria-label="字 ${off+i}" title="${bank==='epc'&&off+i===0?'CRC-16':bank==='epc'&&off+i===1?'PC':'字 '+(off+i)}">`); }
+    const hex=data&&!fail?data.substr(r*4,32):''; const asc=hex.replace(/(..)/g,(m)=>{const c=parseInt(m,16);return c>=32&&c<127?String.fromCharCode(c):'.';});
+    h+=`<div class="wl">${off+r}</div><div class="ws">${words.join('')}</div><div class="asc">${esc(asc)}</div>`; }
+  $('#mem').innerHTML=h; }
+['#m-cnt','#m-off','#m-bank'].forEach(id=>$(id).addEventListener('change',()=>memGrid()));
+function openMemory(epc){ $('#m-epc').value=epc; $('#x-epc').value=epc; show('memory'); }
+async function access(req,btn){ const out=$('#m-res'); btn.disabled=true; out.className='res'; out.textContent='执行中…';
+  try{ const r=await api('access',{targetEpc:$('#m-epc').value.replace(/\s/g,''),password:$('#m-pwd').value.replace(/\s/g,''),timeout:+$('#m-to').value,antenna:0,...req});
+    out.className='res '+(r.ok?'ok':'bad'); out.textContent=`${r.ok?'✓':'✗'} ${r.message}${r.epc?' · EPC '+r.epc:''}${r.antenna?' · 天线 '+r.antenna:''}${r.words!=null?' · 写入 '+r.words+' 字':''}`; return r; }
+  catch(e){ out.className='res bad'; out.textContent='✗ '+e.message; return null; } finally{ applyState(S); } }
+const hexOk=(v,w)=>/^[0-9a-f]*$/i.test(v)&&(!w||v.length%4===0);
+$('#m-read').onclick=async e=>{ if(!hexOk($('#m-pwd').value)) return toast('访问密码必须是十六进制'); const r=await access({op:'read',bank:$('#m-bank').value,wordPointer:+$('#m-off').value,wordCount:+$('#m-cnt').value},e.currentTarget); memGrid(r&&r.ok?r.data:null, !(r&&r.ok)); };
+$('#m-write').onclick=async e=>{ const ws=$$('#mem input').map(i=>i.value.trim().toUpperCase()); if(!ws.length||ws.some(w=>!/^[0-9A-F]{4}$/.test(w))) return toast('每个字必须是 4 位十六进制，请先读取或填写全部字');
+  if($('#m-bank').value==='tid') return toast('TID 存储区通常为只读');
+  let ptr=+$('#m-off').value, data=ws.join(''); if($('#m-bank').value==='epc'&&ptr<2){ const skip=2-ptr; data=data.slice(skip*4); ptr=2; if(!data) return toast('CRC 和 PC 字不能直接写入'); }
+  if(!confirm(`确定写入 ${data.length/4} 个字到 ${$('#m-bank').value.toUpperCase()} 存储区（从字 ${ptr} 开始）？`)) return;
+  await access({op:'write',bank:$('#m-bank').value,wordPointer:ptr,data},e.currentTarget); };
+$('#x-wepc').onclick=async e=>{ const d=$('#x-epc').value.replace(/\s/g,''); if(!d||!hexOk(d,true)) return toast('新 EPC 必须是十六进制，长度为 4 的倍数'); const r=await access({op:'writeEpc',data:d},e.currentTarget); if(r&&r.ok){ $('#m-epc').value=d; } };
+$('#x-lock').onclick=async e=>{ const p=$('#x-priv').value; if(p.startsWith('perma')&&!confirm('永久锁定 / 永久解锁不可撤销，确定执行？')) return; await access({op:'lock',field:$('#x-field').value,privilege:p},e.currentTarget); };
+$('#x-kill').onclick=async e=>{ const k=$('#x-kpwd').value.replace(/\s/g,''); if(!k||!hexOk(k)||!parseInt(k,16)) return toast('灭活密码必须是非零十六进制'); if(!confirm(`确定永久灭活标签 ${$('#m-epc').value||'（任意标签）'}？`)) return; await access({op:'kill',password:k},e.currentTarget); };
+memGrid();
+
+// ---------- application settings ----------
+function buildColSettings(){
+  $('#colsTable').innerHTML=COLS.map(c=>`<label class="chk"><input type="checkbox" data-c="${c.k}" ${colOn[c.k]?'checked':''}>${c.l}</label>`).join('');
+  $('#colsTable').querySelectorAll('input').forEach(i=>i.onchange=()=>{ colOn[i.dataset.c]=i.checked; store.set('cols',colOn); renderHead(); });
+  const F={tid:'TID',count:'读取次数',antenna:'天线',rssi:'最近 RSSI',avg:'RSSI 平均',phase:'相位角',from:'最后读取自',last:'最后读取'};
+  $('#colsList').innerHTML=Object.entries(F).map(([k,l])=>`<label class="chk"><input type="checkbox" data-c="${k}" ${listOn[k]?'checked':''}>${l}</label>`).join('');
+  $('#colsList').querySelectorAll('input').forEach(i=>i.onchange=()=>{ listOn[i.dataset.c]=i.checked; store.set('listCols',listOn); });
+}
+buildColSettings(); $('#as-fade').value=store.get('fade',10); $('#as-fade').onchange=()=>store.set('fade',+$('#as-fade').value);
+
+// ---------- log ----------
+const logEl=$('#log'); let logs=[];
+function addLog(l){ logs.push(l); if(logs.length>800) logs.shift(); if(l.level!=='debug'){ const m=$('#sb-msg'); m.textContent=l.msg; m.className='msg '+l.level; } if(l.level==='debug'&&!$('#lgDebug').checked) return; appendLog(l); }
+function appendLog(l){ const at=logEl.scrollTop+logEl.clientHeight>=logEl.scrollHeight-20; const d=document.createElement('div'); d.className=l.level; d.innerHTML=`<span class="t">${tstr(l.ts)}</span> ${esc(l.msg)}`; logEl.appendChild(d); while(logEl.childElementCount>800) logEl.firstChild.remove(); if(at) logEl.scrollTop=logEl.scrollHeight; }
+$('#lgDebug').onchange=()=>{ logEl.innerHTML=''; logs.filter(l=>l.level!=='debug'||$('#lgDebug').checked).forEach(appendLog); };
+$('#lgClear').onclick=()=>{ logs=[]; logEl.innerHTML=''; };
+$('#sb-log').onclick=()=>{ $('#drawer').hidden=!$('#drawer').hidden; }; $('#lgClose').onclick=()=>$('#drawer').hidden=true;
+renderSource();
+</script>
+</body>
+</html>
