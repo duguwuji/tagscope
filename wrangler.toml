@@ -2,7 +2,8 @@
 name = "tagscope"
 main = "worker.js"
 compatibility_date = "2025-10-01"
-workers_dev = true
+workers_dev = false
+routes = [{ pattern = "tagscope.iotrfid.top", custom_domain = true }]
 
 [[rules]]
 type = "Text"

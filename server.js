@@ -14,7 +14,7 @@ const HOST = args.host || process.env.HOST || '127.0.0.1';
 const INDEX = path.join(__dirname, 'public', 'index.html');
 const APPJS = path.join(__dirname, 'public', 'app.js');
 // Web pages allowed to use this bridge from another origin (the hosted TagScope page + local pages).
-const ALLOW = new Set(['https://tagscope.hillleng2478.workers.dev', ...String(args['allow-origin'] || process.env.TAGSCOPE_ALLOW_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean)]);
+const ALLOW = new Set(['https://tagscope.iotrfid.top', ...String(args['allow-origin'] || process.env.TAGSCOPE_ALLOW_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean)]);
 function originOk(req) {
   const o = req.headers.origin; if (!o) return true;
   if (o === `http://${req.headers.host}` || ALLOW.has(o)) return true;
@@ -116,5 +116,5 @@ const server = http.createServer(async (req, res) => {
     catch (e) { log('error', e.message); res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
   });
 });
-server.listen(PORT, HOST, () => { console.log('TagScope 1.2.0  © 2026 Hill · Hill@iotrfid.top'); console.log(`TagScope 已启动： http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`); console.log('网页版：https://tagscope.hillleng2478.workers.dev （连接真实读写器时保持本窗口运行）'); });
+server.listen(PORT, HOST, () => { console.log('TagScope 1.2.0  © 2026 Hill · Hill@iotrfid.top'); console.log(`TagScope 已启动： http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`); console.log('网页版：https://tagscope.iotrfid.top （连接真实读写器时保持本窗口运行）'); });
 process.on('SIGINT', async () => { await doDisconnect().catch(() => { }); process.exit(0); });
