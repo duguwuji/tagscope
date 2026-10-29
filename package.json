@@ -1,0 +1,16 @@
+{
+  "name": "tagscope",
+  "version": "1.1.0",
+  "description": "TagScope - web-based RFID tag observation and reader test tool with LLRP, R700 REST and simulator drivers",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:lan": "node server.js --host=0.0.0.0",
+    "test": "node test/test-llrp.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Hill <Hill@iotrfid.top>"
+}
