@@ -33,7 +33,9 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
    - Windows：双击 `start-windows.bat`
    - macOS / Linux：运行 `./start.sh`，或者 `node server.js`
 3. 打开 <http://localhost:8080>
-4. 选择驱动，输入读写器 IP 或主机名，然后点击“连接”，再点击“开始盘点”。
+4. 点击左侧“数据源 ⊕”添加读写器（填写 IP 或主机名并选择接口），然后在盘点页点击 ▶ 开始盘点。
+
+完整操作说明见 **[中文用户手册](docs/user-guide-zh.md)**。
 
 常用参数：`node server.js --port=8080 --host=0.0.0.0 --verbose`
 
@@ -80,6 +82,7 @@ public/app.js          界面逻辑：后端、数据源、预设
 public/views.js        界面逻辑：各展示页、标签存储、日志、导航
 public/sim.js          模拟读写器核心（浏览器与桥接服务共用）
 public/tagdb.js        TID → 标签型号
+docs/user-guide-zh.md  中文用户手册
 lib/llrp-codec.js      LLRP 1.0.1 编解码，以及 Impinj 扩展
 lib/driver-llrp.js     LLRP 驱动
 lib/driver-rest.js     R700 IoT Device Interface 驱动
