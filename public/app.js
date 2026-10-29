@@ -180,6 +180,10 @@ function daUI() {
   $$('.da-rest').forEach(e => e.hidden = d !== 'rest'); $$('.da-sim').forEach(e => e.hidden = d !== 'sim'); $$('.da-nsim').forEach(e => e.hidden = d === 'sim');
   $$('.da-bridge').forEach(e => e.hidden = !CLOUD || d === 'sim'); $$('.da-cr').forEach(e => e.hidden = d !== 'rest' || !$('#da-cred').checked);
   $('#da-port').placeholder = d === 'rest' ? ($('#da-tls').checked ? '443' : '80') : '5084';
+  $('#da-host').placeholder = d === 'rest' ? '例如 192.168.1.242 或 impinj-12-34-56.local' : '例如 192.168.1.242 或 impinj-12-34-56.local:5084';
+  $('#da-bnote').textContent = d === 'rest'
+    ? '浏览器不能直接调用 R700 REST 接口：读写器默认使用自签名 HTTPS 证书，一般也不允许网页跨域（CORS）访问。需要在能访问读写器的电脑上运行 TagScope 桥接服务（node server.js），由它转发 REST 请求和标签数据流。'
+    : '网页不能直接建立 LLRP TCP 连接（端口 5084）。需要在能访问读写器的电脑上运行 TagScope 桥接服务（node server.js）。';
   $('#da-host').disabled = d === 'sim'; if (d === 'sim' && !$('#da-host').value) $('#da-host').value = 'simulator'; else if (d !== 'sim' && $('#da-host').value === 'simulator') $('#da-host').value = '';
 }
 ['#da-if', '#da-tls', '#da-cred'].forEach(s => $(s).addEventListener('change', daUI));
