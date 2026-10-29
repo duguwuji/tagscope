@@ -12,7 +12,7 @@ const args = Object.fromEntries(process.argv.slice(2).map(a => a.replace(/^--/, 
 const PORT = +(args.port || process.env.PORT || 8080);
 const HOST = args.host || process.env.HOST || '127.0.0.1';
 const INDEX = path.join(__dirname, 'public', 'index.html');
-const STATIC = { '/app.js': 'app.js', '/sim.js': 'sim.js', '/tagdb.js': 'tagdb.js', '/views.js': 'views.js' };
+const STATIC = { '/app.js': 'app.js', '/sim.js': 'sim.js', '/tagdb.js': 'tagdb.js', '/views.js': 'views.js', '/i18n.js': 'i18n.js' };
 // Web pages allowed to use this bridge from another origin (the hosted TagScope page + local pages).
 const ALLOW = new Set(['https://tagscope.iotrfid.top', ...String(args['allow-origin'] || process.env.TAGSCOPE_ALLOW_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean)]);
 function originOk(req) {

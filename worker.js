@@ -6,10 +6,11 @@ import app from './public/app.js'; // bundled as text (see wrangler.toml rules)
 import sim from './public/sim.js';
 import tagdb from './public/tagdb.js';
 import views from './public/views.js';
+import i18n from './public/i18n.js';
 
 const page = html.replace('<script src="tagdb.js', '<script>window.TAGSCOPE_CLOUD=1;</script>\n<script src="tagdb.js');
 const SEC = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' };
-const JS = { '/app.js': app, '/sim.js': sim, '/tagdb.js': tagdb, '/views.js': views };
+const JS = { '/app.js': app, '/sim.js': sim, '/tagdb.js': tagdb, '/views.js': views, '/i18n.js': i18n };
 
 export default {
   async fetch(request) {
