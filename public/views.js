@@ -492,6 +492,91 @@ $('#lgClear').onclick = () => { logs = []; logEl.innerHTML = ''; };
 $('#lgDebug').onchange = () => { logEl.innerHTML = ''; logs.filter(l => l.level !== 'debug' || $('#lgDebug').checked).forEach(appendLog); };
 
 /* =====================================================================
+   System: reader information, settings, maintenance, GPO
+   ===================================================================== */
+let sysSrc = null, sysData = null, sysSig = '', sysWatch = null;
+const sysList = () => sources.filter(s => rt(s.id).connected);
+const sysCall = (op, x = {}) => { const s = srcById(sysSrc); if (!s) throw new Error('数据源未连接'); return backendOf(s).api('system', { id: s.id, op, user: s.cred ? s.user : undefined, pass: s.cred ? s.pass : undefined, ...x }); };
+function sysMsg(m) { $('#sys-msg').textContent = m || ''; }
+function renderSystem(force) {
+  const list = sysList(), sig = list.map(s => s.id).join(',');
+  if (!force && sig === sysSig) return; sysSig = sig;
+  if (!list.some(s => s.id === sysSrc)) { sysSrc = list[0] ? list[0].id : null; sysData = null; }
+  $('#sys-src').innerHTML = list.map(s => `<option value="${s.id}" ${s.id === sysSrc ? 'selected' : ''}>${esc(nameOf(s))}</option>`).join('');
+  $('#sys-src').disabled = $('#sys-refresh').disabled = !list.length;
+  $('#sys-empty').hidden = !!list.length; $('#sys-body').hidden = !list.length;
+  if (sysSrc) sysLoad().catch(() => { }); else sysMsg('');
+}
+async function sysLoad(quiet) {
+  const id = sysSrc; if (!quiet) sysMsg('正在读取…');
+  try { const d = await sysCall('info'); if (id !== sysSrc) return d; sysData = d; if (!quiet) sysMsg(d.note || ''); sysPaint(); return d; }
+  catch (e) { if (id !== sysSrc) return; if (!quiet) { sysData = null; sysPaint(); sysMsg(/^404\b|Not found/i.test(e.message) ? '桥接服务版本过旧，不支持系统功能。请在“更新”页下载最新桥接服务' : e.message); } throw e; }
+}
+function sysPaint() {
+  const d = sysData || {}, c = d.caps || {}, run = sysSrc && rt(sysSrc).running;
+  $('#sys-info').innerHTML = Object.entries(d.info || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join('') || '<span class="hint">—</span><span></span>';
+  $('#sys-host').value = d.hostname || ''; $('#sys-host').disabled = $('#sys-host-save').disabled = !c.hostname;
+  const regs = [...new Set([...(d.regions || []), d.region].filter(Boolean))];
+  $('#sys-region').innerHTML = regs.map(r => `<option ${r === d.region ? 'selected' : ''}>${esc(r)}</option>`).join(''); $('#sys-region').disabled = $('#sys-region-set').disabled = !c.region;
+  $('#sys-iface').value = d.iface || 'llrp'; $('#sys-iface').disabled = $('#sys-iface-set').disabled = !c.iface;
+  $('#sys-reboot').disabled = !c.reboot; $('#sys-factory').disabled = !c.factory;
+  $('#sys-factory').title = c.factory ? '' : 'Impinj IoT 接口不提供恢复出厂设置，请在读写器网页中操作或长按复位键';
+  $('#sys-mhint').textContent = !c.reboot ? '该数据源不支持远程重启。' : d.via === 'sim' ? '模拟器重启约 5 秒，期间所有操作返回 503。' : '重启约需 1–2 分钟，期间读写器不可用；完成后 TagScope 会自动重新连接。';
+  const g = d.gpo || [];
+  $('#sys-gpo').innerHTML = g.length ? g.map(x => `<button data-port="${x.port}" class="${x.state ? 'on' : ''}" aria-pressed="${x.state}" ${c.gpo ? '' : 'disabled'}>GPO ${x.port} · ${x.state ? 'HIGH' : 'LOW'}</button>`).join('') : '<span class="hint">该数据源没有可控制的 GPO。</span>';
+  if (run) sysMsg('正在盘点：修改设置或重启前请先停止盘点');
+}
+async function sysDo(op, x, okMsg) {
+  const s = srcById(sysSrc); if (!s) return;
+  if (rt(s.id).running) return toast('请先停止盘点');
+  try { sysMsg('正在执行…'); const r = await sysCall(op, x); toast(okMsg); sysMsg(''); return r || {}; }
+  catch (e) { sysMsg(e.message); toast(e.message); return null; }
+}
+function sysAfterReboot(s, ms) {
+  clearInterval(sysWatch); const t0 = Date.now(), wait = Math.min(ms, 20000); let lastTry = 0;
+  sysMsg('读写器正在重启…');
+  sysWatch = setInterval(async () => {
+    const el = Date.now() - t0, r = rt(s.id);
+    if (el > 240000) { clearInterval(sysWatch); if (sysSrc === s.id) sysMsg('等待重启超时，请检查读写器后在左侧点击“重试”'); return; }
+    if (el < wait) return;
+    if (!r.connected) { if (s.enabled && !r.connecting && Date.now() - lastTry > 10000) { lastTry = Date.now(); connectSource(s); } return; }
+    try { await sysCall('info'); clearInterval(sysWatch); toast(`“${nameOf(s)}”重启完成`); if (view === 'system') { if (sysSrc === s.id) sysMsg(''); renderSystem(true); } }
+    catch (_) { }
+  }, 2500);
+}
+$('#sys-src').onchange = e => { sysSrc = e.target.value; sysData = null; sysPaint(); sysLoad().catch(() => { }); };
+$('#sys-refresh').onclick = () => sysLoad().catch(() => { });
+$('#sys-host-save').onclick = async () => {
+  const v = $('#sys-host').value.trim();
+  if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i.test(v)) return toast('主机名只能包含字母、数字和连字符（1–63 个字符，不能以连字符开头或结尾）');
+  const s = srcById(sysSrc), old = sysData && sysData.hostname;
+  if (await sysDo('hostname', { value: v }, '主机名已保存')) { sysLoad(true).catch(() => { }); if (s && old && s.host && s.host.toLowerCase().startsWith(old.toLowerCase())) toast('主机名已保存。数据源地址仍是旧主机名，如需请在数据源设置中修改'); }
+};
+$('#sys-region-set').onclick = async () => {
+  const v = $('#sys-region').value; if (!v || (sysData && v === sysData.region)) return toast('工作区域未改变');
+  if (!confirm(`将工作区域改为“${v}”？\n工作区域决定读写器使用的频段和功率上限，必须符合当地无线电法规。`)) return;
+  if (await sysDo('region', { value: v }, '工作区域已更新')) sysLoad(true).catch(() => { });
+};
+$('#sys-iface-set').onclick = async () => {
+  const v = $('#sys-iface').value, s = srcById(sysSrc); if (sysData && v === sysData.iface) return toast('RFID 接口未改变');
+  if (!confirm(`将 RFID 接口切换为 ${v === 'rest' ? 'IoT Device Interface (REST)' : 'LLRP'}？\n切换后需要在数据源设置中把接口改为对应类型才能继续盘点。`)) return;
+  if (await sysDo('iface', { value: v }, 'RFID 接口已切换')) { sysLoad(true).catch(() => { }); if (s && s.iface !== 'sim' && s.iface !== v) toast(`RFID 接口已切换为 ${v.toUpperCase()}。请在数据源设置中把接口改为对应类型`); }
+};
+$('#sys-reboot').onclick = async () => {
+  const s = srcById(sysSrc); if (s && rt(s.id).running) return toast('请先停止盘点'); if (!s || !confirm(`重启读写器“${nameOf(s)}”？\n重启期间读写器不可用。`)) return;
+  const r = await sysDo('reboot', {}, '已发送重启命令'); if (r) sysAfterReboot(s, r.rebootMs || 90000);
+};
+$('#sys-factory').onclick = async () => {
+  const s = srcById(sysSrc); if (s && rt(s.id).running) return toast('请先停止盘点'); if (!s || !confirm(`将“${nameOf(s)}”恢复出厂设置？\n主机名、工作区域、RFID 接口和 GPO 都会恢复默认，并重启读写器。此操作不可撤销。`)) return;
+  const r = await sysDo('factory', {}, '已恢复出厂设置，正在重启'); if (r) sysAfterReboot(s, r.rebootMs || 90000);
+};
+$('#sys-gpo').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-port]'); if (!b || b.disabled) return; const s = srcById(sysSrc), p = +b.dataset.port, on = !b.classList.contains('on');
+  try { await backendOf(s).api('gpo', { id: s.id, port: p, state: on }); const g = (sysData.gpo || []).find(x => x.port === p); if (g) g.state = on; sysPaint(); addLog({ id: s.id, level: 'info', msg: `GPO ${p} → ${on ? '高' : '低'}`, ts: Date.now() }); }
+  catch (err) { toast(err.message); }
+});
+
+/* =====================================================================
    Navigation & init
    ===================================================================== */
 function show(v) {
@@ -501,7 +586,7 @@ function show(v) {
   const navV = v === 'invset' ? 'inventory' : v;
   $$('.ni[data-nav]').forEach(b => b.toggleAttribute('aria-current', b.dataset.nav === navV)); $$('.ni[aria-current]').forEach(b => b.setAttribute('aria-current', 'page'));
   renderSources(); renderToi();
-  if (v === 'inventory') render(true); if (v === 'memory') { tmRenderSrc(); tmModel(); } if (v === 'logging') fillLogging(); if (v === 'updates' || v === 'about') renderUpdates(); if (v === 'toi') renderToiView();
+  if (v === 'inventory') render(true); if (v === 'memory') { tmRenderSrc(); tmModel(); } if (v === 'logging') fillLogging(); if (v === 'updates' || v === 'about') renderUpdates(); if (v === 'toi') renderToiView(); if (v === 'system') renderSystem(true);
 }
 $$('.ni[data-nav]').forEach(b => b.onclick = () => show(b.dataset.nav));
 window.addEventListener('beforeunload', e => { if (run) { e.preventDefault(); e.returnValue = ''; } });
