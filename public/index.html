@@ -109,6 +109,12 @@ input.inv{border-color:var(--err);outline-color:var(--err);background:#FFF5F5}
 .hint{font-size:11px;color:var(--mu)}
 .hub{color:#2E7D32;font-size:11px;font-weight:600}
 /* data source pages */
+.shl{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;letter-spacing:inherit;text-transform:inherit}.shl:hover{text-decoration:underline}
+.toi-box{border:1px solid var(--bd2);border-radius:3px;padding:8px 10px;margin:0 0 10px}
+.toi-fmt{margin:6px 0 8px;line-height:1.6}.toi-fmt code{font-family:var(--mono);font-size:11px;color:#333;word-break:break-all}
+.toi-card{display:flex;align-items:center;gap:8px;border:1px solid var(--bd2);border-radius:3px;padding:6px 8px;margin:0 0 6px}.toi-card[aria-current]{border-color:var(--teal);background:#F2FAF9}
+.toi-card .cl{width:12px;height:12px;border-radius:2px;flex:none}.toi-card .nm{border:0;background:none;padding:0;font:600 12px "Segoe UI",sans-serif;color:var(--teal);cursor:pointer;text-align:left}.toi-card .nm:hover{text-decoration:underline}
+.toi-card .meta{flex:1;font-size:11px;color:var(--mu)}.toi-card .x{border:0;background:none;cursor:pointer;color:#888;font-size:14px;line-height:1;padding:0 2px}.toi-card .x:hover{color:var(--err)}
 .ds-head{font-size:11px;color:#333;padding:0 0 4px;display:flex;flex-wrap:wrap;gap:4px 12px}.ds-head b{font-weight:600}
 .tabs{display:flex;gap:16px;align-items:baseline;margin:2px 0 6px}
 .tabs button{border:0;background:none;font:300 19px "Segoe UI",Arial,sans-serif;color:#A0A8B2;cursor:pointer;padding:0}
@@ -189,7 +195,7 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
     <div id="dsList"></div>
   </div>
   <div class="sec">
-    <div class="sh">关注标签 <span class="badge" id="toiBadge" hidden>0</span><span class="sp"></span><button class="plus" id="toi-add" title="载入关注标签文件（JSON / CSV）" aria-label="载入关注标签文件"><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="#222" stroke-width="1.6"/></svg></button></div>
+    <div class="sh"><button class="shl" id="toi-open" title="管理关注标签">关注标签</button> <span class="badge" id="toiBadge" hidden>0</span><span class="sp"></span><button class="plus" id="toi-add" title="载入关注标签文件（JSON / CSV）" aria-label="载入关注标签文件"><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="#222" stroke-width="1.6"/></svg></button></div>
     <div id="toiList"></div>
     <input type="file" id="toi-file" accept=".json,.csv,.txt" multiple hidden>
   </div>
@@ -376,9 +382,19 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
 
   <!-- ============ Tags of interest window ============ -->
   <section class="view" id="v-toi" hidden><div class="page">
-    <div class="ds-head" id="toi-head"></div>
-    <div class="btns" style="margin:4px 0 8px"><button class="btn sm" id="toi-exp">导出 JSON</button><button class="btn sm" id="toi-rm">移除此文件</button></div>
-    <table class="g" id="toi-tbl"></table>
+    <div class="toi-box">
+      <div class="btns"><button class="btn sm" id="toi-imp">+ 导入 TOI 文件</button><button class="btn sm" id="toi-sample">用当前列表前 10 个标签生成示例</button></div>
+      <div class="hint toi-fmt"><span>JSON 格式：</span><code>{"Version":"1.0.0","Name":"托盘A","Tags":[{"EPC":"E280…","Color":"#2E86DE"}]}</code><br><span>CSV / TXT 格式：每行一个 EPC，可附加 Color=颜色</span></div>
+      <div id="toi-files"></div>
+    </div>
+    <div class="toi-box">
+      <div id="toi-detail" hidden>
+        <div class="ds-head" id="toi-head"></div>
+        <div class="btns" style="margin:4px 0 8px"><button class="btn sm" id="toi-exp">导出 JSON</button><button class="btn sm" id="toi-rm">移除此文件</button></div>
+        <table class="g" id="toi-tbl"></table>
+      </div>
+      <div class="hint" id="toi-pick">点击文件名查看其中的标签。</div>
+    </div>
   </div></section>
 
   <!-- ============ Location / Direction (gateway only) ============ -->
