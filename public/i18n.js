@@ -85,6 +85,15 @@ const D = {
   '附加功能': 'Additional features', '显示唯一标签曲线': 'Show unique tag chart', '启用手动十六进制 / Base64 格式': 'Enable manual hex / Base64 format', '将标签重置为 A 状态': 'Reset tags to state A', '首次运行前': 'Before the first run', '每次运行前': 'Before every run',
   '重置时长 (s)': 'Reset duration (s)', '读取速率窗口 (s)': 'Read rate window (s)', '读取速率窗口为 0 时按整个运行时长计算（不含启动延迟与关闭时间）。': 'With a read rate window of 0 the rate is computed over the whole run (excluding start delay and off time).', '，将在下次运行时生效': ', takes effect on the next run',
   // tags of interest
+  'LLRP 数据源用于“系统”页通过 Impinj IoT 接口（HTTPS）进行的操作': 'For an LLRP data source, used by the System page for operations through the Impinj IoT interface (HTTPS)',
+  '桥接服务版本过旧，不支持系统功能。请在“更新”页下载最新桥接服务': 'The bridge is too old for the System page. Download the latest bridge on the Updates page',
+  '系统': 'System', '数据源：': 'Data source:', '刷新': 'Refresh', '硬件与固件': 'Hardware & firmware', '工作区域': 'Operating region', 'RFID 接口': 'RFID interface', '切换': 'Switch', '维护': 'Maintenance', '重启读写器': 'Reboot reader', '恢复出厂设置': 'Factory reset', '诊断 · GPO 控制': 'Diagnostics · GPO control', '应用': 'Apply', '保存': 'Save',
+  '点击切换 GPO 静态电平，高电平显示为青色。': 'Click to toggle the static GPO level; high is shown in teal.', '没有已连接的数据源。请先在左侧添加并启用读写器（或模拟读写器）。': 'No connected data source. Add and enable a reader (or the simulated reader) in the sidebar first.',
+  '正在读取…': 'Reading…', '正在执行…': 'Working…', '读写器正在重启…': 'Reader is rebooting…', '该数据源不支持远程重启。': 'This data source does not support remote reboot.', '模拟器重启约 5 秒，期间所有操作返回 503。': 'The simulator reboots in about 5 s; all operations return 503 meanwhile.', '重启约需 1–2 分钟，期间读写器不可用；完成后 TagScope 会自动重新连接。': 'A reboot takes 1–2 minutes and the reader is unavailable meanwhile; TagScope reconnects automatically afterwards.',
+  '该数据源没有可控制的 GPO。': 'This data source has no controllable GPO.', '正在盘点：修改设置或重启前请先停止盘点': 'Inventory running: stop it before changing settings or rebooting', '请先停止盘点': 'Stop the inventory first', 'Impinj IoT 接口不提供恢复出厂设置，请在读写器网页中操作或长按复位键': 'The Impinj IoT interface has no factory reset; use the reader web page or hold the reset button',
+  '主机名只能包含字母、数字和连字符（1–63 个字符，不能以连字符开头或结尾）': 'A hostname may contain only letters, digits and hyphens (1–63 characters, not starting or ending with a hyphen)', '主机名已保存': 'Hostname saved', '主机名已保存。数据源地址仍是旧主机名，如需请在数据源设置中修改': 'Hostname saved. The data source still uses the old hostname; change it in the data source settings if needed',
+  '工作区域未改变': 'Operating region unchanged', '工作区域已更新': 'Operating region updated', 'RFID 接口未改变': 'RFID interface unchanged', 'RFID 接口已切换': 'RFID interface switched', '已发送重启命令': 'Reboot command sent', '已恢复出厂设置，正在重启': 'Factory settings restored; rebooting', '等待重启超时，请检查读写器后在左侧点击“重试”': 'Timed out waiting for the reboot; check the reader, then click "Retry" in the sidebar',
+  '读写器正在重启（HTTP 503），请稍候': 'The reader is rebooting (HTTP 503); please wait', '读写器正在重启（约 5 秒）': 'Reader rebooting (about 5 s)', '恢复出厂设置': 'Factory reset', '重启读写器': 'Reboot reader',
   '管理关注标签': 'Manage Tags of Interest', '+ 导入 TOI 文件': '+ Import TOI file', '用当前列表前 10 个标签生成示例': 'Generate a sample from the first 10 tags in the list', 'JSON 格式：': 'JSON format: ', 'CSV / TXT 格式：每行一个 EPC，可附加 Color=颜色': 'CSV / TXT format: one EPC per line, optionally followed by Color=<color>',
   '{"Version":"1.0.0","Name":"托盘A","Tags":[{"EPC":"E280…","Color":"#2E86DE"}]}': '{"Version":"1.0.0","Name":"Pallet A","Tags":[{"EPC":"E280…","Color":"#2E86DE"}]}', '点击文件名查看其中的标签。': 'Click a file name to see its tags.', '尚未载入关注标签文件。可导入 TOI 文件，或先运行盘点再用当前列表生成示例。': 'No Tags of Interest files loaded yet. Import a TOI file, or run an inventory and generate a sample from the current list.', '当前列表没有标签，请先运行盘点': 'The list has no tags yet. Run an inventory first.',
   '颜色': 'Color', '标签数': 'Tags', '本次已读到': 'Read this run', '已启用': 'Enabled', '未启用': 'Disabled', '已读到': 'Read', '导出 JSON': 'Export JSON', '移除此文件': 'Remove this file', '文件中没有有效的 EPC': 'The file contains no valid EPC', '缺少 Tags 数组': 'Missing Tags array',
@@ -154,6 +163,15 @@ const P = [
   [/天线 (\d+) (已连接|已断开)/, (m, a, s) => `Antenna ${a} ${s === '已连接' ? 'connected' : 'disconnected'}`],
   [/^(\d+) 个标签$/, '$1 tags'],
   [/^(\d+) 个标签 · 已读到 (\d+)$/, '$1 tags · $2 read'],
+  [/^将工作区域改为“(.+)”？\n工作区域决定读写器使用的频段和功率上限，必须符合当地无线电法规。$/, 'Change the operating region to "$1"?\nThe region sets the frequency band and power limits and must comply with local radio regulations.'],
+  [/^将 RFID 接口切换为 (.+)？\n切换后需要在数据源设置中把接口改为对应类型才能继续盘点。$/, 'Switch the RFID interface to $1?\nAfterwards, change the interface in the data source settings to match before running an inventory.'],
+  [/^重启读写器“(.+)”？\n重启期间读写器不可用。$/, 'Reboot reader "$1"?\nThe reader is unavailable while rebooting.'],
+  [/^将“(.+)”恢复出厂设置？\n主机名、工作区域、RFID 接口和 GPO 都会恢复默认，并重启读写器。此操作不可撤销。$/, 'Restore factory settings on "$1"?\nHostname, operating region, RFID interface and GPOs return to defaults and the reader reboots. This cannot be undone.'],
+  [/^RFID 接口已切换为 (\w+)。请在数据源设置中把接口改为对应类型$/, 'RFID interface switched to $1. Change the interface in the data source settings to match'],
+  [/^“(.+)”重启完成$/, '"$1" finished rebooting'],
+  [/^系统操作：(.+)$/, 'System operation: $1'],
+  [/^([^\u4e00-\u9fff]+)（模拟）$/, '$1 (simulated)'],
+  [/^主机名 → (.+)$/, 'Hostname → $1'], [/^工作区域 → (.+)$/, 'Operating region → $1'], [/^RFID 接口 → (.+)$/, 'RFID interface → $1'],
 ];
 
 const keys = Object.keys(D).sort((a, b) => b.length - a.length);
