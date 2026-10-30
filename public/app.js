@@ -67,6 +67,7 @@ function makeLocal() {
       case 'access': if (!s) throw new Error('数据源未连接'); return s.accessOp(b);
       case 'gpo': if (!s) throw new Error('数据源未连接'); return s.setGpo(b.port, b.state);
       case 'gpi': if (!s) throw new Error('数据源未连接'); s.setGpi(b.port, b.level); return { port: b.port, level: b.level };
+      case 'system': if (!s) throw new Error('数据源未连接'); if (b.op && b.op !== 'info' && s.running) throw new Error('请先停止盘点'); { const r = s.system(b.op || 'info', b); if (b.op && b.op !== 'info') handlers.log({ id: b.id, level: 'info', msg: `系统操作：${b.op}${b.value ? ' → ' + b.value : ''}`, ts: Date.now() }); return r; }
     }
     throw new Error('未知操作 ' + p);
   };
@@ -109,6 +110,7 @@ let view = 'inventory', cfgSrc = null;
 
 function renderSources() {
   const el = $('#dsList');
+  if (view === 'system' && typeof renderSystem === 'function') setTimeout(() => renderSystem(), 0);
   if (!sources.length) { el.innerHTML = '<div class="empty-s">点击 ⊕ 添加读写器</div>'; return; }
   el.innerHTML = sources.map(s => { const r = rt(s.id), i = infoOf(s);
     const tip = [`主机名: ${s.iface === 'sim' ? '模拟器' : s.host}`, `接口: ${IFN[s.iface]}`, i ? `型号: ${i.model}` : '', i && i.region ? `区域: ${i.region}` : '', r.err ? `错误: ${r.err}` : r.connecting ? '正在连接…' : r.running ? '正在盘点' : r.connected ? '已连接' : '未连接'].filter(Boolean).join('\n');
@@ -178,7 +180,7 @@ let editSrc = null;
 function daUI() {
   const d = $('#da-if').value;
   $$('.da-rest').forEach(e => e.hidden = d !== 'rest'); $$('.da-sim').forEach(e => e.hidden = d !== 'sim'); $$('.da-nsim').forEach(e => e.hidden = d === 'sim');
-  $$('.da-bridge').forEach(e => e.hidden = !CLOUD || d === 'sim'); $$('.da-cr').forEach(e => e.hidden = d !== 'rest' || !$('#da-cred').checked);
+  $$('.da-bridge').forEach(e => e.hidden = !CLOUD || d === 'sim'); $$('.da-crd').forEach(e => e.hidden = d === 'sim'); $$('.da-cr').forEach(e => e.hidden = d === 'sim' || !$('#da-cred').checked);
   $('#da-port').placeholder = d === 'rest' ? ($('#da-tls').checked ? '443' : '80') : '5084';
   $('#da-host').placeholder = d === 'rest' ? '例如 192.168.1.242 或 impinj-12-34-56.local' : '例如 192.168.1.242 或 impinj-12-34-56.local:5084';
   $('#da-bnote').textContent = d === 'rest'
