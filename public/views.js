@@ -193,11 +193,13 @@ function renderBlank() {
     : !participants().length ? '没有已启用且已连接的数据源。请在左侧打开数据源开关。' : '点击 <b>▶</b> 开始盘点。右键列标题可选择显示的列，拖动列标题可调整顺序，右键标签行可访问标签存储或修改 EPC。';
 }
 let lastFull = 0;
+let lastToiR = 0;
 function render(force) {
   const now = Date.now();
   if (run) clockMs = now - run.t0;
   if (view === 'inventory') $('#inv-clock').textContent = clockStr(clockMs);
   if (!force && now - lastFull < 250) return; lastFull = now;
+  if (view === 'toi' && (force || now - lastToiR > 1000)) { lastToiR = now; renderToiView(); }
   if (view !== 'inventory') return;
   $('#grid').classList.toggle('tv', O.view === 'table');
   if (O.view === 'table') renderTable(); else renderList();
@@ -297,18 +299,30 @@ function saveToi() { store.set('toi', toiFiles.map(({ id, name, on, color, tags:
 function renderToi() {
   const cnt = toiFiles.filter(f => f.on).reduce((a, f) => a + f.map.size, 0);
   $('#toiBadge').hidden = !cnt; $('#toiBadge').textContent = cnt;
+  if (view === 'toi') renderToiView();
   $('#toiList').innerHTML = toiFiles.length ? toiFiles.map(f => `<div class="ds" data-t="${f.id}" ${view === 'toi' && toiView === f.id ? 'aria-current="page"' : ''} title="${f.map.size} 个标签"><span class="sw"><input type="checkbox" ${f.on ? 'checked' : ''} aria-label="启用 ${esc(f.name)}"><span></span></span><span class="nm">${esc(f.name)}</span><button class="x" title="移除" aria-label="移除 ${esc(f.name)}">×</button></div>`).join('') : '<div class="empty-s">未载入文件</div>';
 }
-$('#toiList').addEventListener('click', e => {
-  const row = e.target.closest('[data-t]'); if (!row) return; const f = toiFiles.find(x => x.id === row.dataset.t);
-  if (e.target.matches('input')) { if (e.target.checked) { const dup = dupEpc(f); if (dup) { e.target.checked = false; return toast(`EPC ${dup.epc} 已存在于已启用的文件“${dup.name}”中，请先停用该文件`); } } f.on = e.target.checked; saveToi(); renderToi(); render(true); return; }
+function toggleToi(f, inp) { if (inp.checked) { const dup = dupEpc(f); if (dup) { inp.checked = false; return toast(`EPC ${dup.epc} 已存在于已启用的文件“${dup.name}”中，请先停用该文件`); } } f.on = inp.checked; saveToi(); renderToi(); render(true); }
+function toiClick(e) {
+  const row = e.target.closest('[data-t]'); if (!row) return; const f = toiFiles.find(x => x.id === row.dataset.t); if (!f) return;
+  if (e.target.matches('input')) return toggleToi(f, e.target);
   if (e.target.closest('.sw')) return;
   if (e.target.matches('.x')) { removeToi(f); return; }
+  if (e.currentTarget.id === 'toi-files' && !e.target.closest('.nm')) return;
   toiView = f.id; show('toi');
-});
+}
+$('#toiList').addEventListener('click', toiClick); $('#toi-files').addEventListener('click', toiClick);
+$('#toi-open').onclick = () => show('toi');
 function dupEpc(f) { for (const o of toiFiles) if (o !== f && o.on) for (const e of f.map.keys()) if (o.map.has(e)) return { epc: e, name: o.name }; return null; }
-function removeToi(f) { toiFiles = toiFiles.filter(x => x !== f); saveToi(); renderToi(); if (view === 'toi' && toiView === f.id) show('inventory'); render(true); }
-$('#toi-add').onclick = () => $('#toi-file').click();
+function removeToi(f) { toiFiles = toiFiles.filter(x => x !== f); if (toiView === f.id) toiView = null; saveToi(); renderToi(); render(true); }
+$('#toi-add').onclick = $('#toi-imp').onclick = () => $('#toi-file').click();
+$('#toi-sample').onclick = () => {
+  const list = rowsSorted().slice(0, 10); if (!list.length) return toast('当前列表没有标签，请先运行盘点');
+  let n = 1; while (toiFiles.some(f => f.name === 'Sample_' + n)) n++;
+  const color = PALETTE[toiFiles.length % PALETTE.length], name = 'Sample_' + n;
+  const f = hydrateToi({ id: uid(), name, on: true, color, tags: list.map(t => [t.epc, color]) }); const dup = dupEpc(f); if (dup) { f.on = false; toast(`“${name}”与已启用文件“${dup.name}”有重复 EPC，已载入但未启用`); }
+  toiFiles.push(f); saveToi(); toiView = f.id; renderToi(); render(true);
+};
 $('#toi-file').onchange = async e => {
   for (const file of e.target.files) {
     try {
@@ -331,8 +345,11 @@ $('#toi-file').onchange = async e => {
   }
   e.target.value = ''; renderToi(); render(true);
 };
+const toiSeen = f => [...f.map.keys()].filter(e => tags.has(e)).length;
 function renderToiView() {
-  const f = toiFiles.find(x => x.id === toiView); if (!f) return show('inventory');
+  $('#toi-files').innerHTML = toiFiles.length ? toiFiles.map(f => `<div class="toi-card" data-t="${f.id}" ${toiView === f.id ? 'aria-current="true"' : ''}><span class="sw"><input type="checkbox" ${f.on ? 'checked' : ''} aria-label="启用 ${esc(f.name)}"><span></span></span><span class="cl" style="background:${esc(f.color)}"></span><button class="nm">${esc(f.name)}</button><span class="meta">${f.map.size} 个标签 · 已读到 ${toiSeen(f)}</span><button class="x" title="移除" aria-label="移除 ${esc(f.name)}">×</button></div>`).join('') : '<div class="hint">尚未载入关注标签文件。可导入 TOI 文件，或先运行盘点再用当前列表生成示例。</div>';
+  const f = toiFiles.find(x => x.id === toiView);
+  $('#toi-detail').hidden = !f; $('#toi-pick').hidden = !!f || !toiFiles.length; if (!f) return;
   const seen = [...f.map.keys()].filter(e => tags.has(e)).length;
   $('#toi-head').innerHTML = `<span>名称: <b>${esc(f.name)}</b></span><span>标签数: <b>${f.map.size}</b></span><span>本次已读到: <b>${seen}</b></span><span>状态: <b>${f.on ? '已启用' : '未启用'}</b></span>`;
   $('#toi-tbl').innerHTML = '<thead><tr><th>#</th><th>EPC</th><th>颜色</th><th>已读到</th><th>读取次数</th></tr></thead><tbody>' + [...f.map].map(([e, c], i) => { const t = tags.get(e); return `<tr><td class="n">${i + 1}</td><td style="background:${esc(tint(c))}">${e}</td><td>${esc(c)}</td><td>${t ? '✓' : ''}</td><td class="n">${t ? t.count : ''}</td></tr>`; }).join('') + '</tbody>';
