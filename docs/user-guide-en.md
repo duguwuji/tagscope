@@ -22,9 +22,10 @@ Source code: <https://github.com/duguwuji/tagscope>
 8. [Tags of Interest](#8-tags-of-interest)
 9. [Tag memory](#9-tag-memory)
 10. [Tag logging](#10-tag-logging)
-11. [Updates and About](#11-updates-and-about)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Appendix](#13-appendix)
+11. [System](#11-system)
+12. [Updates and About](#12-updates-and-about)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Appendix](#14-appendix)
 
 ---
 
@@ -118,7 +119,7 @@ As in ItemTest, the window has a left sidebar and a main area on the right.
 | | Tag Memory (标签存储) | Read and write the memory of a single tag |
 | Data Sources (数据源) | ⊕ and the source list | Add readers; the switch in front of each source decides whether it takes part in inventory |
 | Tags of Interest (关注标签) | ⊕ and the file list | Load Tags of Interest files; the badge shows the number of enabled tags |
-| Settings (设置) | Updates (更新), Tag Logging (标签日志), About (关于) | Version check, automatic logging, version and copyright information |
+| Settings (设置) | System (系统), Updates (更新), Tag Logging (标签日志), About (关于) | Reader information and maintenance, version check, automatic logging, version and copyright information |
 
 **Log (日志)** at the bottom left opens the log drawer, which shows connection, configuration and error messages. Tick **Debug (调试)** for more detail, or clear the log.
 
@@ -460,14 +461,41 @@ Timestamp,EPC,TID,Antenna,RSSI,Frequency,Hostname,PhaseAngle,DopplerFrequency,Po
 
 ---
 
-## 11. Updates and About
+## 11. System
+
+**Settings → System (系统)** in the sidebar shows the reader hardware information and offers common maintenance tasks, modeled on the system endpoints of the Impinj IoT Device Interface (REST). Choose a connected data source at the top; **Refresh (刷新)** reads it again.
+
+- **Hardware & firmware (硬件与固件)**: model, description, SKU, serial number, MAC address, hostname, antenna / GPI / GPO counts, firmware version, RFID interface, uptime and so on (whatever fields the reader returns).
+- **Settings (设置)**
+  - **Hostname (主机名)**: letters, digits and hyphens, 1–63 characters. If the data source address uses the old hostname, update it in the data source settings.
+  - **Operating region (工作区域)**: only the regions the reader allows are listed (an FCC R700 usually offers only FCC). The region sets the frequency band and power limits and must comply with local regulations.
+  - **RFID interface (RFID 接口)**: switch between LLRP and IoT Device Interface (REST). Afterwards, change the interface in the data source settings to match.
+- **Maintenance (维护)**
+  - **Reboot reader (重启读写器)**: a real reader takes 1–2 minutes and TagScope reconnects automatically afterwards; the simulator takes about 5 s and returns 503 for every operation meanwhile.
+  - **Factory reset (恢复出厂设置)**: simulator only. The Impinj IoT interface has no factory-reset endpoint; on a real reader use the reader web page or hold the reset button.
+- **Diagnostics · GPO control (诊断 · GPO 控制)**: click to toggle the static level of each GPO; high is shown in teal.
+
+Settings cannot be changed and the reader cannot be rebooted while an inventory is running; stop it first.
+
+Support by interface:
+
+| Feature | Simulator | IoT (REST) | LLRP |
+|---|---|---|---|
+| Hardware & firmware information | ✓ | ✓ | ✓ (Impinj R700: read from the IoT interface over HTTPS; other readers show only LLRP capability information) |
+| Hostname / region / RFID interface / reboot | ✓ | ✓ | Impinj R700 only (the bridge calls the IoT interface over HTTPS 443 with root / impinj by default; change it under "Override default credentials" in the data source) |
+| Factory reset | ✓ | — | — |
+| GPO control | ✓ | ✓ | ✓ |
+
+---
+
+## 12. Updates and About
 
 - **Updates (更新)**: shows the web app version, the bridge version and the latest version on GitHub. Tick **Check for updates at startup (启动时自动检查更新)** or click **Check now (立即检查)**. **Download latest bridge (下载最新桥接服务)** downloads the latest source archive from GitHub. A notice is shown if the bridge version is below 2.0.
 - **About (关于)**: version, copyright, and a link to the user guide.
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 **The online version cannot reach the bridge**
 
@@ -508,9 +536,9 @@ All settings are stored in the browser's local storage, per site address: the on
 
 ---
 
-## 13. Appendix
+## 14. Appendix
 
-### 13.1 Interface capability comparison
+### 14.1 Interface capability comparison
 
 | Feature | LLRP | IoT / REST | Simulator |
 |---|---|---|---|
@@ -524,13 +552,13 @@ All settings are stored in the browser's local storage, per site address: the on
 | Tag read/write, BlockWrite | ✓ | — | ✓ |
 | Lock, kill | ✓ | — | ✓ |
 
-### 13.2 Differences from ItemTest 2.14.1
+### 14.2 Differences from ItemTest 2.14.1
 
 **Not implemented** in this version: Location and Direction displays (xArray / xSpan), Gen2X features, Truncated Reply, Protected Mode, filter verification, tag population estimation algorithm, XPC and Enhanced Integra reporting, GPI debounce, RDD / FDD, and tag event configuration for the IoT interface.
 
 **Additional in TagScope**: web version (no installation), Chinese / English interface, built-in simulated reader, tag lock and kill, automatic tag model identification, automatic CSV log export after every run.
 
-### 13.3 File structure
+### 14.3 File structure
 
 ```
 server.js              Bridge (HTTP, SSE, API)
