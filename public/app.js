@@ -144,7 +144,7 @@ async function connectSource(s) {
   const r = rt(s.id); if (r.connecting) return; r.connecting = true; r.err = ''; renderSources();
   try { const st = await backendOf(s).api('connect', connArgs(s)); applySrcState(st); }
   catch (e) { r.err = e.message; r.connected = false; addLog({ id: s.id, level: 'error', msg: e.message, ts: Date.now() }); toast(`${nameOf(s)}：${e.message}`); }
-  finally { r.connecting = false; renderSources(); renderOffline(); if (view === 'dscfg' && cfgSrc === s.id) renderCfgHead(); }
+  finally { r.connecting = false; renderSources(); renderOffline(); refreshParticipants(); if (view === 'dscfg' && cfgSrc === s.id) renderCfgHead(); }
 }
 async function disconnectSource(s) {
   const r = rt(s.id); if (!r.connected) return;
@@ -156,7 +156,7 @@ function applySrcState(st) {
   if (st.info) { r.info = st.info; s.lastInfo = st.info; saveSources(); }
   if (was && !r.connected && s.enabled) { r.err = r.err || '连接已断开'; if (run && run.parts.includes(s.id)) addLog({ id: s.id, level: 'warn', msg: '数据源在运行中断开', ts: Date.now() }); }
   if (r.connected) r.err = '';
-  renderSources();
+  renderSources(); if (typeof refreshParticipants === 'function') refreshParticipants();
 }
 handlers.state = (st) => applySrcState(st);
 handlers.hello = (d, be) => {
