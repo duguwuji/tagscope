@@ -11,11 +11,13 @@
   const pickChip = () => { const tot = CHIPS.reduce((s, c) => s + c[1], 0); let r = Math.random() * tot; for (const c of CHIPS) { if ((r -= c[1]) < 0) return c[0]; } return CHIPS[0][0]; };
   const toBits = h => [...clean(h)].map(c => parseInt(c, 16).toString(2).padStart(4, '0')).join('');
   // Gen2 Select actions: [match, miss] → LLRP StateUnaware action code
+  const REGIONS = ['FCC', 'ETSI EN 302 208', 'ETSI Lower Band', 'China', 'Japan', 'Korea', 'Australia', 'Brazil', 'India', 'Singapore', 'Taiwan', 'Hong Kong'];
   const ACT = { 'select,unselect': 0, 'select,nothing': 1, 'nothing,unselect': 2, 'unselect,nothing': 3, 'unselect,select': 4, 'nothing,select': 5 };
 
   class Sim {
     constructor(emit) { this.emit = emit || (() => { }); this.running = false; this.armed = false; this.timer = null; this.gpiState = {}; this.gpoState = {}; }
     connect({ simTags = 40, host = 'simulator' } = {}) {
+      this.sys = null; this.t0 = Date.now();
       const n = Math.max(1, Math.min(2000, +simTags || 40));
       this.tags = Array.from({ length: n }, (_, i) => {
         const tid = pickChip() + '2000' + hex(12), epc = 'E28011700000' + hex(12);
@@ -44,6 +46,7 @@
       return sl;
     }
     start(cfg) {
+      this._up();
       this.cfg = cfg;
       const ants = (cfg.antennas || []).filter(a => a.enabled);
       if (!ants.length) throw new Error('请至少启用一个天线');
@@ -87,8 +90,29 @@
       if (!this.armed && g.start && +g.start.port === +port && g.start.level === lv) this._arm(this.cfg);
       else if (this.armed && g.stop && +g.stop.port === +port && g.stop.level === lv) this._disarm();
     }
-    setGpo(port, state) { this.gpoState[port] = !!state; return { port, state: !!state }; }
+    setGpo(port, state) { this._up(); this.gpoState[port] = !!state; return { port, state: !!state }; }
+    // ---- System (modelled on the Impinj IoT Device Interface /system endpoints) ----
+    _sysDefault() { const m = this.sys && this.sys.mac || '00:16:25:' + hex(6).match(/../g).join(':'); return { mac: m, hostname: 'impinj-' + m.slice(9).replace(/:/g, '-').toLowerCase(), region: 'FCC', iface: 'llrp', bootAt: this.sys ? Date.now() : this.t0 || Date.now(), bootUntil: 0 }; }
+    _up() { if (this.sys && this.sys.bootUntil > Date.now()) throw new Error('读写器正在重启（HTTP 503），请稍候'); }
+    system(op, a = {}) {
+      if (!this.sys) this.sys = this._sysDefault();
+      const y = this.sys; this._up();
+      const reboot = () => { this.stop(); const z = this.sys; z.bootUntil = Date.now() + 5000; z.bootAt = z.bootUntil; this.emit('log', 'warn', '读写器正在重启（约 5 秒）'); };
+      if (op === 'hostname') { const v = String(a.value || '').trim(); if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i.test(v)) throw new Error('主机名只能包含字母、数字和连字符（1–63 个字符，不能以连字符开头或结尾）'); y.hostname = v; return { ok: true }; }
+      if (op === 'region') { if (!REGIONS.includes(a.value)) throw new Error('不支持的工作区域：' + a.value); y.region = a.value; this.info.region = a.value + '（模拟）'; return { ok: true }; }
+      if (op === 'iface') { if (!['llrp', 'rest'].includes(a.value)) throw new Error('未知 RFID 接口：' + a.value); y.iface = a.value; return { ok: true }; }
+      if (op === 'reboot') { reboot(); return { ok: true, rebootMs: 5000 }; }
+      if (op === 'factory') { this.sys = this._sysDefault(); this.gpoState = {}; this.info.region = 'FCC Part 15.247（模拟）'; reboot(); return { ok: true, rebootMs: 5000 }; }
+      if (op !== 'info') throw new Error('未知操作 ' + op);
+      const i = this.info;
+      return { via: 'sim', hostname: y.hostname, region: y.region, regions: REGIONS, iface: y.iface,
+        caps: { hostname: true, region: true, iface: true, reboot: true, factory: true, gpo: true },
+        gpo: Array.from({ length: i.gpo }, (_, k) => ({ port: k + 1, state: !!this.gpoState[k + 1] })),
+        info: { productModel: 'R700（模拟）', manufacturer: i.manufacturer, productDescription: i.model, productSku: 'SIM-R700', serialNumber: i.serial, macAddress: y.mac.toUpperCase(), hostname: y.hostname,
+          antennaPortCount: i.antennaCount, gpiCount: i.gpi, gpoCount: i.gpo, firmwareVersion: i.firmware, rfidInterface: y.iface, uptimeSeconds: Math.round((Date.now() - y.bootAt) / 1000) } };
+    }
     async accessOp(r) {
+      this._up();
       const tEpc = clean(r.targetEpc), tTid = clean(r.targetTid);
       const t = this.tags.find(x => !x.killed && (tTid ? x.tid === tTid : tEpc ? x.epc === tEpc : true));
       await new Promise(res => setTimeout(res, 150 + Math.random() * 150));

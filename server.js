@@ -89,13 +89,34 @@ async function doStart(id, cfg) {
 }
 async function doStop(id) { const x = get(id); if (x.running) { x.running = false; await x.driver.stop(); log('debug', '盘点已停止', id); } x.running = false; pushState(x); return srcState(x); }
 
+const SYSMSG = { hostname: b => `主机名 → ${b.value}`, region: b => `工作区域 → ${b.value}`, iface: b => `RFID 接口 → ${b.value}`, reboot: () => '重启读写器', factory: () => '恢复出厂设置' };
+async function doSystem(b) {
+  const x = get(b.id), op = b.op || 'info'; let r;
+  if (op !== 'info' && !SYSMSG[op]) throw new Error('未知操作 ' + op);
+  if (op !== 'info' && x.running) throw new Error('请先停止盘点');
+  if (x.driver.system) r = await x.driver.system(op, b);
+  else { // LLRP: Impinj R700 still exposes the IoT Device Interface /system endpoints over HTTPS
+    x.rest ||= RestDriver.client({ host: x.driver.host, port: b.restPort, user: b.user, pass: b.pass });
+    try { r = await x.rest.system(op, b); }
+    catch (e) {
+      if (op !== 'info') throw new Error(`无法通过 Impinj IoT 接口执行：${e.message}`); const i = x.info || {};
+      r = { via: 'llrp', note: `${e.message}。仅显示 LLRP 信息；主机名、区域、RFID 接口与重启需要读写器支持 Impinj IoT 接口（R700 系列）。`, caps: {},
+        info: { productModel: i.model, manufacturer: i.manufacturer, serialNumber: i.serial, firmwareVersion: i.firmware, region: i.region, antennaPortCount: i.antennaCount, gpiCount: i.gpi, gpoCount: i.gpo, rfidInterface: 'llrp' } };
+    }
+    if (op === 'info') { r.caps.gpo = (x.info?.gpo || 0) > 0; r.gpo = Array.from({ length: x.info?.gpo || 0 }, (_, k) => ({ port: k + 1, state: !!(x.gpoState || {})[k + 1] })); }
+  }
+  if (op !== 'info') log('info', SYSMSG[op](b), x.id);
+  return r;
+}
+
 const routes = {
   'GET /api/state': async () => state(),
   'POST /api/connect': async b => doConnect(b),
   'POST /api/disconnect': async b => doDisconnect(b.id),
   'POST /api/start': async b => doStart(b.id, b.cfg),
   'POST /api/stop': async b => doStop(b.id),
-  'POST /api/gpo': async b => { const x = get(b.id); if (!x.driver.gpo) throw new Error('该数据源不支持 GPO 控制'); return x.driver.gpo(b.port, b.state); },
+  'POST /api/gpo': async b => { const x = get(b.id); if (!x.driver.gpo) throw new Error('该数据源不支持 GPO 控制'); const r = await x.driver.gpo(b.port, b.state); (x.gpoState ||= {})[b.port] = !!b.state; return r; },
+  'POST /api/system': async b => doSystem(b),
   'POST /api/gpi': async b => { const x = get(b.id); if (!x.driver.gpi) throw new Error('仅模拟器支持模拟 GPI 输入'); return x.driver.gpi(b.port, b.level); },
   'POST /api/access': async b => {
     const x = get(b.id);
