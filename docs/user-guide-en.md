@@ -391,7 +391,9 @@ Colors can be CSS color names or `#RRGGBB`; tags without a color use the file's 
 
 ### 8.2 Loading and managing files
 
-- Click ⊕ next to **Tags of Interest (关注标签)** and choose one or more files.
+- Click ⊕ next to **Tags of Interest (关注标签)** and choose one or more files, or click the **Tags of Interest** heading to open the management page and use **+ Import TOI file (+ 导入 TOI 文件)**.
+- The management page lists every file: switch, color, name, tag count and the number read in this run (updated live during inventory); × removes the file.
+- **Generate a sample from the first 10 tags in the list (用当前列表前 10 个标签生成示例)** takes the first 10 EPCs of the inventory list in its current sort order and creates a file named Sample_1, Sample_2, …; export it as JSON to use as a template.
 - The switch in front of each file enables or disables it; the badge shows the total number of tags in enabled files.
 - A file with the same name as an already loaded file cannot be loaded.
 - A file that shares EPCs with an enabled file can be loaded but is not enabled automatically.
