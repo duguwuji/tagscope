@@ -29,7 +29,7 @@ aside{border-right:1px solid var(--bd);display:flex;flex-direction:column;overfl
 .plus:hover{background:#E8F0F8}
 .ni{display:block;width:100%;text-align:left;border:0;background:transparent;padding:3px 8px;cursor:pointer;font-size:12px}
 .ni:hover:not(:disabled){background:#E6EEF7}
-.ni[aria-current=page]{background:var(--sel);color:#fff}
+.ni[aria-current=page],.ni[aria-current=page]:hover{background:var(--sel);color:#fff}
 .ni:disabled{color:#A8A8A8;cursor:default}
 .ds{display:flex;align-items:center;gap:6px;padding:2px 6px 2px 8px;min-height:22px;cursor:pointer;position:relative}
 .ds:hover{background:#E6EEF7}.ds[aria-current=page]{background:var(--sel);color:#fff}
@@ -110,6 +110,12 @@ input.inv{border-color:var(--err);outline-color:var(--err);background:#FFF5F5}
 .hub{color:#2E7D32;font-size:11px;font-weight:600}
 /* data source pages */
 .shl{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;letter-spacing:inherit;text-transform:inherit}.shl:hover{text-decoration:underline}
+.sys-top{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:12px}.sys-top label,.sys-top .btn{white-space:nowrap;flex:none}.sys-top select{width:260px;flex:none}.sys-top .hint{flex:1;min-width:0}
+.sys-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(280px,2fr);gap:8px;align-items:start}.sys-grid .pnl{margin:0 0 8px}@media(max-width:900px){.sys-grid{grid-template-columns:1fr}}
+.sys-row{display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:6px;align-items:center;margin:0 0 6px;font-size:12px}.sys-row input,.sys-row select{min-width:0;width:100%}
+.sys-h{font:600 11px "Segoe UI",sans-serif;text-transform:uppercase;letter-spacing:.3px;color:#333;margin:10px 0 6px;border-top:1px solid var(--bd2);padding-top:8px}
+.btn.danger{color:var(--err);border-color:var(--err)}.btn:disabled{opacity:.45;cursor:default}
+.sys-gpo{display:flex;gap:8px;flex-wrap:wrap}.sys-gpo button{border:1px solid #9AA5B1;background:#fff;border-radius:14px;padding:3px 12px;font:600 11px var(--mono);cursor:pointer;color:#333}.sys-gpo button.on{background:var(--teal);border-color:var(--teal);color:#fff}.sys-gpo button:disabled{opacity:.45;cursor:default}
 .toi-box{border:1px solid var(--bd2);border-radius:3px;padding:8px 10px;margin:0 0 10px}
 .toi-fmt{margin:6px 0 8px;line-height:1.6}.toi-fmt code{font-family:var(--mono);font-size:11px;color:#333;word-break:break-all}
 .toi-card{display:flex;align-items:center;gap:8px;border:1px solid var(--bd2);border-radius:3px;padding:6px 8px;margin:0 0 6px}.toi-card[aria-current]{border-color:var(--teal);background:#F2FAF9}
@@ -201,6 +207,7 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
   </div>
   <div class="sec">
     <div class="sh">设置</div>
+    <button class="ni" data-nav="system">系统</button>
     <button class="ni" data-nav="updates">更新</button>
     <button class="ni" data-nav="logging">标签日志</button>
     <button class="ni" data-nav="about">关于</button>
@@ -322,9 +329,9 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
         <label class="row"><span>端口:</span><input type="number" id="da-port" placeholder="5084"></label>
         <div class="row da-rest"><span>认证方式:</span><select disabled><option>Basic</option></select></div>
         <label class="row da-rest"><span><span class="sw"><input type="checkbox" id="da-tls"><span></span></span> 使用 TLS</span><label class="chk"><input type="checkbox" id="da-ins"> 允许自签名证书</label></label>
-        <label class="row da-rest"><span><span class="sw"><input type="checkbox" id="da-cred"><span></span></span> 覆盖默认凭据</span><span></span></label>
-        <label class="row da-rest da-cr"><span>用户名:</span><input type="text" id="da-user" placeholder="root" autocomplete="username"></label>
-        <label class="row da-rest da-cr"><span>密码:</span><input type="password" id="da-pass" placeholder="••••••" autocomplete="current-password"></label>
+        <label class="row da-crd" title="LLRP 数据源用于“系统”页通过 Impinj IoT 接口（HTTPS）进行的操作"><span><span class="sw"><input type="checkbox" id="da-cred"><span></span></span> 覆盖默认凭据</span><span></span></label>
+        <label class="row da-crd da-cr"><span>用户名:</span><input type="text" id="da-user" placeholder="root" autocomplete="username"></label>
+        <label class="row da-crd da-cr"><span>密码:</span><input type="password" id="da-pass" placeholder="••••••" autocomplete="current-password"></label>
       </div></div>
       <div class="btns" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="da-ok">添加数据源</button><button class="btn" id="da-cancel">取消</button></div>
     </div></div>
@@ -402,6 +409,26 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
   <section class="view" id="v-direction" hidden><div class="page"><div class="about"><h2>方向展示</h2><p>方向展示需要 Impinj xSpan 或 xArray 网关（方向模式）。当前数据源中没有兼容设备，此展示不可用。</p></div></div></section>
 
   <!-- ============ Settings: updates / logging / about ============ -->
+  <!-- ============ System (reader maintenance) ============ -->
+  <section class="view" id="v-system" hidden><div class="page">
+    <div class="sys-top"><label for="sys-src">数据源：</label><select id="sys-src"></select><button class="btn sm" id="sys-refresh">刷新</button><span class="hint" id="sys-msg" role="status"></span></div>
+    <div class="hint" id="sys-empty" hidden>没有已连接的数据源。请先在左侧添加并启用读写器（或模拟读写器）。</div>
+    <div id="sys-body" hidden>
+      <div class="sys-grid">
+        <div class="pnl"><div class="ph">硬件与固件</div><div class="pb"><div class="kv" id="sys-info"></div></div></div>
+        <div class="pnl"><div class="ph">设置</div><div class="pb">
+          <div class="sys-row"><label for="sys-host">主机名</label><input id="sys-host" spellcheck="false" autocomplete="off"><button class="btn sm" id="sys-host-save">保存</button></div>
+          <div class="sys-row"><label for="sys-region">工作区域</label><select id="sys-region"></select><button class="btn sm" id="sys-region-set">应用</button></div>
+          <div class="sys-row"><label for="sys-iface">RFID 接口</label><select id="sys-iface"><option value="llrp">LLRP</option><option value="rest">IoT Device Interface (REST)</option></select><button class="btn sm" id="sys-iface-set">切换</button></div>
+          <div class="sys-h">维护</div>
+          <div class="btns"><button class="btn sm" id="sys-reboot">重启读写器</button><button class="btn sm danger" id="sys-factory">恢复出厂设置</button></div>
+          <div class="hint" id="sys-mhint" style="margin-top:6px"></div>
+        </div></div>
+      </div>
+      <div class="pnl"><div class="ph">诊断 · GPO 控制</div><div class="pb"><div class="sys-gpo" id="sys-gpo"></div><div class="hint" style="margin-top:6px">点击切换 GPO 静态电平，高电平显示为青色。</div></div></div>
+    </div>
+  </div></section>
+
   <section class="view" id="v-updates" hidden><div class="page">
     <div class="pnl"><div class="ph">更新配置</div><div class="pb">
       <label class="chk"><span class="sw"><input type="checkbox" id="up-auto"><span></span></span>启动时自动检查更新</label>
