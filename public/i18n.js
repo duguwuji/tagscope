@@ -85,6 +85,8 @@ const D = {
   '附加功能': 'Additional features', '显示唯一标签曲线': 'Show unique tag chart', '启用手动十六进制 / Base64 格式': 'Enable manual hex / Base64 format', '将标签重置为 A 状态': 'Reset tags to state A', '首次运行前': 'Before the first run', '每次运行前': 'Before every run',
   '重置时长 (s)': 'Reset duration (s)', '读取速率窗口 (s)': 'Read rate window (s)', '读取速率窗口为 0 时按整个运行时长计算（不含启动延迟与关闭时间）。': 'With a read rate window of 0 the rate is computed over the whole run (excluding start delay and off time).', '，将在下次运行时生效': ', takes effect on the next run',
   // tags of interest
+  '管理关注标签': 'Manage Tags of Interest', '+ 导入 TOI 文件': '+ Import TOI file', '用当前列表前 10 个标签生成示例': 'Generate a sample from the first 10 tags in the list', 'JSON 格式：': 'JSON format: ', 'CSV / TXT 格式：每行一个 EPC，可附加 Color=颜色': 'CSV / TXT format: one EPC per line, optionally followed by Color=<color>',
+  '{"Version":"1.0.0","Name":"托盘A","Tags":[{"EPC":"E280…","Color":"#2E86DE"}]}': '{"Version":"1.0.0","Name":"Pallet A","Tags":[{"EPC":"E280…","Color":"#2E86DE"}]}', '点击文件名查看其中的标签。': 'Click a file name to see its tags.', '尚未载入关注标签文件。可导入 TOI 文件，或先运行盘点再用当前列表生成示例。': 'No Tags of Interest files loaded yet. Import a TOI file, or run an inventory and generate a sample from the current list.', '当前列表没有标签，请先运行盘点': 'The list has no tags yet. Run an inventory first.',
   '颜色': 'Color', '标签数': 'Tags', '本次已读到': 'Read this run', '已启用': 'Enabled', '未启用': 'Disabled', '已读到': 'Read', '导出 JSON': 'Export JSON', '移除此文件': 'Remove this file', '文件中没有有效的 EPC': 'The file contains no valid EPC', '缺少 Tags 数组': 'Missing Tags array',
   // tag memory
   '按 EPC 选择': 'Select by EPC', '按 TID 选择': 'Select by TID', '未知标签型号：启用 FAST ID 以识别': 'Unknown tag model: enable FAST ID to identify it', '字数': 'Word count', '字偏移': 'Word offset', '访问密码': 'Access password', '设置访问密码': 'Set access password', '新访问密码': 'New access password',
@@ -151,6 +153,7 @@ const P = [
   [/（第 (\d+)\/(\d+) 次/, ' (run $1/$2'],
   [/天线 (\d+) (已连接|已断开)/, (m, a, s) => `Antenna ${a} ${s === '已连接' ? 'connected' : 'disconnected'}`],
   [/^(\d+) 个标签$/, '$1 tags'],
+  [/^(\d+) 个标签 · 已读到 (\d+)$/, '$1 tags · $2 read'],
 ];
 
 const keys = Object.keys(D).sort((a, b) => b.length - a.length);
