@@ -1,6 +1,6 @@
 # TagScope User Guide
 
-Version: TagScope 2.0.0 (web app and bridge)  
+Version: TagScope 2.0.1 (web app and bridge)  
 Author: Hill · <Hill@iotrfid.top>  
 Online: <https://tagscope.iotrfid.top>  
 Source code: <https://github.com/duguwuji/tagscope>  
@@ -45,7 +45,7 @@ Three kinds of data source are supported:
 | Interface | Devices | Capabilities |
 |---|---|---|
 | Impinj LLRP interface | Speedway R120 / R220 / R420, xPortal, xArray / xSpan (inventory), and R700 / R660 switched to LLRP mode | Most complete: inventory, filters, GPI/GPO, tag read/write, lock, kill, low duty cycle |
-| Impinj IoT Device Interface (R700 REST) | R700 / R660 running the IoT Device Interface | Inventory, Gen2 filters, phase angle; no tag read/write and no GPI trigger |
+| Impinj IoT Device Interface (R700 REST) | R700 / R660 running the IoT Device Interface | Inventory, Gen2 filters, phase angle; tag read/write and GPI triggers are not implemented in this driver |
 | Simulated reader | No hardware needed | Simulates a population of tags with common chips; supports every feature; for learning the UI and demos |
 
 > TagScope is an independent project and is not affiliated with Impinj, Inc. Impinj, ItemTest, Octane, FastID and TagFocus are trademarks of Impinj, Inc.
@@ -80,7 +80,7 @@ Tag data travels only between the browser and your local bridge. It never passes
    - macOS / Linux: run `./start.sh`, or run `node server.js` in the project folder
 4. When the console shows the listening address, open <http://localhost:8080>, or set **Bridge URL (桥接服务地址)** to `http://localhost:8080` in the online version.
 
-> The 2.0 web app requires bridge 2.0 or later (multi-source API). If the **Updates (更新)** page shows a bridge version below 2.0, download it again.
+> The 2.0.1 web app requires bridge 2.0.1 or later (pairing authentication and sequenced batches). Download the bridge again if yours is older.
 
 ### 2.4 Bridge options
 
@@ -525,7 +525,7 @@ Support by interface:
 
 **Tag memory read/write fails**
 
-- Use the LLRP interface or the simulator (the REST interface does not support tag read/write).
+- Use the LLRP interface or the simulator (this REST driver does not implement tag read/write).
 - Writing to locked areas requires the correct access password.
 - Writes often fail when the tag is far from the antenna; writing usually needs more power than reading.
 - Some chips do not support BlockWrite; untick **Use BlockWrite** and try again.
@@ -580,3 +580,13 @@ docs/user-guide-zh.md  Chinese user guide
 ---
 
 © 2026 Hill · <Hill@iotrfid.top>
+
+
+### 2.0.1 pairing and run results
+
+- The startup console prints a random bridge pairing code. Opening `http://localhost:8080` on the bridge computer pairs automatically; the online app and other computers require that code. The code stays in browser session storage. Both the API and event stream require authentication.
+- To keep a fixed code, set `TAGSCOPE_TOKEN` to 24–256 non-whitespace characters. After a restart changes the code, update it in the data source editor.
+- For a custom bridge hostname, add `--allow-host=reader-bridge.local` (comma-separated, or `TAGSCOPE_ALLOW_HOST`). `--allow-origin` allows an origin but does not bypass pairing authentication.
+- A failed stop remains unconfirmed and can be retried. A timed-out tag write may have an unknown outcome: read back before retrying.
+- Each run has a unique ID and numbered batches. Stop replays trailing batches; unrecoverable gaps are marked incomplete. Log cache limits show a truncation warning.
+- `npm test` uses in-memory fault injection, HTTP/SSE routing, browser request logic and a simulated LLRP read/write flow. It does not connect to real readers; hardware and firmware compatibility still require acceptance testing.

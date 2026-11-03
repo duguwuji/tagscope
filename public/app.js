@@ -1,6 +1,6 @@
 // TagScope — Copyright © 2026 Hill (Hill@iotrfid.top). All rights reserved.
 'use strict';
-const VERSION = '2.0.0';
+const VERSION = '2.0.1';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clean = s => String(s || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
@@ -12,6 +12,8 @@ const store = { get(k, d) { try { const v = localStorage.getItem('tagscope.' + k
 const CLOUD = !!window.TAGSCOPE_CLOUD || location.protocol === 'file:';
 const normUrl = u => { u = String(u || '').trim().replace(/\/+$/, ''); if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u; return u; };
 let bridgeUrl = normUrl(store.get('bridge', '')) || 'http://localhost:8080';
+function bridgeToken(base) { if (!base && window.TAGSCOPE_BRIDGE_TOKEN) return window.TAGSCOPE_BRIDGE_TOKEN; try { return sessionStorage.getItem('tagscope.token.' + (base || location.origin)) || ''; } catch (_) { return ''; } }
+function setBridgeToken(base, value) { try { sessionStorage.setItem('tagscope.token.' + (base || location.origin), value); } catch (_) {} const b = backends.get(base); if (b) { b.token = value; b.authAsked = false; } }
 const hex2b64 = h => { h = clean(h); if (!h) return ''; let s = ''; for (let i = 0; i + 1 < h.length; i += 2) s += String.fromCharCode(parseInt(h.substr(i, 2), 16)); return btoa(s); };
 function dl(name, text, type = 'text/csv') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([type === 'text/csv' ? '\ufeff' + text : text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 const stamp = (d = new Date()) => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
@@ -22,24 +24,46 @@ function beep() { try { const c = new (window.AudioContext || window.webkitAudio
    Backends: bridge (node server.js, multi-source) and in-browser simulator
    ===================================================================== */
 const handlers = {};
+let pairingQueue = Promise.resolve();
 function addrSpace(base) { try { const h = new URL(base).hostname.replace(/^\[|\]$/g, ''); if (!base || h === 'localhost' || /^127\./.test(h) || h === '::1') return null;
   return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|f[cd]|fe80:)/i.test(h) || /\.local$/i.test(h) ? 'local' : null; } catch (_) { return null; } }
 async function xfetch(url, opt, space) { if (space && location.protocol === 'https:') { try { return await fetch(url, { ...opt, targetAddressSpace: space }); } catch (e) { if (!/targetAddressSpace|enum/i.test(e.message)) throw e; } } return fetch(url, opt); }
 const backends = new Map();
 function makeBridge(base) {
-  const me = { kind: 'bridge', base, online: null, version: null, closed: false, ctl: null }, space = CLOUD ? addrSpace(base) : null;
+  const me = { kind: 'bridge', base, online: null, version: null, closed: false, ctl: null, token: bridgeToken(base), authAsked: false, pairing: null }, space = CLOUD ? addrSpace(base) : null;
+  me.receiver = new TagScopeRunBuffer.Receiver(b => handlers.tags && handlers.tags(b, me));
+  async function pair() {
+    if (me.pairing) return me.pairing;
+    if (me.authAsked) return false;
+    me.authAsked = true;
+    me.pairing = pairingQueue.then(async () => { const token = await ask('连接桥接服务', `桥接配对码（${base || location.origin}）:`, '', v => /^[^\s]{24,256}$/.test(v) ? '' : '请填写启动窗口中的配对码'); if (!token) return false; me.token = token; setBridgeToken(base, token); me.authAsked = true; return true; });
+    pairingQueue = me.pairing.catch(() => false);
+    try { return await me.pairing; } finally { me.pairing = null; }
+  }
+  async function request(p, opt) {
+    const fetchOnce = () => xfetch(base + '/api/' + p, { ...opt, headers: { ...opt.headers, ...(me.token ? { Authorization: 'Bearer ' + me.token } : {}) } }, space);
+    let r = await fetchOnce();
+    if (r.status === 401 && await pair()) { await r.body?.cancel(); r = await fetchOnce(); }
+    return r;
+  }
   me.api = async (p, b) => { let r;
-    try { r = await xfetch(base + '/api/' + p, { method: b === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, body: b === undefined ? undefined : JSON.stringify(b) }, space); }
+    if (p === 'start') me.receiver.begin(b.id, b.runId);
+    if (p === 'stop') b = { ...b, afterSeq: me.receiver.seq(b.id) };
+    try { r = await request(p, { method: b === undefined ? 'GET' : 'POST', headers: b === undefined ? {} : { 'Content-Type': 'application/json' }, body: b === undefined ? undefined : JSON.stringify(b) }); }
     catch (e) { setOnline(me, false); throw new Error(`无法连接桥接服务 ${base || location.origin}，请确认已运行 node server.js`); }
-    const j = await r.json().catch(() => ({ error: r.status + ' ' + r.statusText })); if (!r.ok) throw new Error(j.error || r.statusText); return j; };
+    const j = await r.json().catch(() => ({ error: r.status + ' ' + r.statusText })); if (!r.ok) { if (j.state) applySrcState(j.state); throw new Error(j.error || r.statusText); }
+    if (p === 'stop' && b.runId) { applySrcState(j); me.receiver.finish(b.id, j); }
+    return j; };
   me.open = async () => { while (!me.closed) { me.ctl = new AbortController();
-    try { const r = await xfetch(base + '/api/events', { headers: { Accept: 'text/event-stream' }, cache: 'no-store', signal: me.ctl.signal }, space); if (!r.ok || !r.body) throw new Error(r.status);
+    try { const r = await request('events', { headers: { Accept: 'text/event-stream' }, cache: 'no-store', signal: me.ctl.signal }); if (!r.ok || !r.body) throw new Error(r.status);
       const rd = r.body.pipeThrough(new TextDecoderStream()).getReader(); let buf = '';
       for (;;) { const { value, done } = await rd.read(); if (done) break; buf += value; let i;
         while ((i = buf.indexOf('\n\n')) >= 0) { const blk = buf.slice(0, i); buf = buf.slice(i + 2); let ev = 'message', data = '';
           for (const ln of blk.split('\n')) { if (ln.startsWith('event:')) ev = ln.slice(6).trim(); else if (ln.startsWith('data:')) data += ln.slice(5).trim(); }
-          if (!data || !handlers[ev]) continue; const d = JSON.parse(data); if (ev === 'hello') { me.version = d.version || '1.x'; setOnline(me, true); } handlers[ev](d, me); } } }
+          if (!data || !handlers[ev]) continue; const d = JSON.parse(data); if (ev === 'hello') { me.version = d.version || '1.x'; if (!d.features?.includes('sequenced-batches')) throw new Error('桥接版本过旧，请升级'); setOnline(me, true); }
+          if (ev === 'tags') me.receiver.accept(d); else handlers[ev](d, me); } } }
     catch (e) { if (me.closed) return; }
+    me.ctl.abort();
     setOnline(me, false); await sleep(3000); } };
   me.close = () => { me.closed = true; me.ctl && me.ctl.abort(); };
   me.open();
@@ -47,12 +71,11 @@ function makeBridge(base) {
 }
 function makeLocal() {
   const me = { kind: 'local', online: true, version: VERSION, sims: new Map(), batches: new Map() };
-  const flush = () => { for (const [id, b] of me.batches) { if (!b.map.size) continue; const reads = [...b.map.values()]; b.map = new Map(); handlers.tags({ id, reads, total: b.n, ts: Date.now() }, me); b.n = 0; } };
+  me.receiver = new TagScopeRunBuffer.Receiver(b => handlers.tags && handlers.tags(b, me));
+  const flush = () => { for (const b of me.batches.values()) { const batch = b.flush(); if (batch) me.receiver.accept(batch); } };
   setInterval(flush, 200);
-  const onTag = (id, t) => { let b = me.batches.get(id); if (!b) me.batches.set(id, b = { map: new Map(), n: 0 }); b.n += t.count || 1; const k = t.epc + '|' + t.antenna, e = b.map.get(k);
-    if (!e) b.map.set(k, { ...t, maxRssi: t.rssi, minRssi: t.rssi, rssiSum: t.rssi ?? 0, rssiN: t.rssi != null ? 1 : 0 });
-    else { e.count += t.count || 1; e.rssi = t.rssi; e.rssiSum += t.rssi; e.rssiN++; e.maxRssi = Math.max(e.maxRssi, t.rssi); e.minRssi = Math.min(e.minRssi, t.rssi); for (const f of ['phase', 'doppler', 'channel', 'freq', 'tid', 'pc', 'rts', 'power']) if (t[f] != null) e[f] = t[f]; e.ts = t.ts; } };
-  const st = (id, s) => ({ id, connected: !!s, running: !!(s && s.running), info: s ? s.info : null, driver: 'sim' });
+  const onTag = (id, t) => { if (me.sims.get(id)?.running) me.batches.get(id)?.add(t); };
+  const st = (id, s) => ({ id, connected: !!s, running: !!(s && s.running), status: s?.running ? 'running' : 'idle', info: s ? s.info : null, driver: 'sim', runId: me.batches.get(id)?.runId });
   me.api = async (p, b = {}) => {
     const s = me.sims.get(b.id);
     switch (p) {
@@ -61,10 +84,10 @@ function makeLocal() {
           if (ev === 'tag') onTag(b.id, a[0]); else if (ev === 'log') handlers.log({ id: b.id, level: a[0], msg: a[1], ts: Date.now() });
           else if (ev === 'rospec') handlers.rospec({ id: b.id, ev: a[0], ts: Date.now() }); else if (ev === 'gpi') handlers.gpi({ id: b.id, ...a[0], ts: Date.now() }); });
         await sleep(250); sim.connect({ simTags: b.simTags, host: 'browser-sim' }); me.sims.set(b.id, sim); handlers.log({ id: b.id, level: 'info', msg: `已连接：${sim.info.model}`, ts: Date.now() }); return st(b.id, sim); }
-      case 'disconnect': if (s) { s.stop(); me.sims.delete(b.id); } return st(b.id, null);
-      case 'start': if (!s) throw new Error('数据源未连接'); s.start(b.cfg); return st(b.id, s);
-      case 'stop': if (s) s.stop(); return st(b.id, s);
-      case 'access': if (!s) throw new Error('数据源未连接'); return s.accessOp(b);
+      case 'disconnect': if (s) { s.stop(); flush(); me.batches.delete(b.id); me.sims.delete(b.id); } return st(b.id, null);
+      case 'start': if (!s) throw new Error('数据源未连接'); me.receiver.begin(b.id, b.runId); me.batches.set(b.id, new TagScopeRunBuffer.RunBuffer(b.id, b.runId)); s.start(TagScopeValidation.inventory(b.cfg)); return st(b.id, s);
+      case 'stop': { const after = me.receiver.seq(b.id); if (s) s.stop(); const batch = me.batches.get(b.id)?.flush(); if (batch) me.receiver.accept(batch); const result = { ...st(b.id, s), ...(me.batches.get(b.id)?.since(after) || {}) }; if (b.runId) me.receiver.finish(b.id, result); return result; }
+      case 'access': if (!s) throw new Error('数据源未连接'); return s.accessOp(TagScopeValidation.access(b));
       case 'gpo': if (!s) throw new Error('数据源未连接'); return s.setGpo(b.port, b.state);
       case 'gpi': if (!s) throw new Error('数据源未连接'); s.setGpi(b.port, b.level); return { port: b.port, level: b.level };
       case 'system': if (!s) throw new Error('数据源未连接'); if (b.op && b.op !== 'info' && s.running) throw new Error('请先停止盘点'); { const r = s.system(b.op || 'info', b); if (b.op && b.op !== 'info') handlers.log({ id: b.id, level: 'info', msg: `系统操作：${b.op}${b.value ? ' → ' + b.value : ''}`, ts: Date.now() }); return r; }
@@ -80,7 +103,7 @@ function backendOf(src) {
 }
 function setOnline(be, on) {
   if (be.online === on) return; be.online = on;
-  for (const s of sources) if (backendOf(s) === be) { if (!on) { const r = rt(s.id); if (r.connected) { r.connected = false; r.running = false; } r.err = '桥接服务不可达'; } }
+  for (const s of sources) if (backendOf(s) === be) { if (!on) { const r = rt(s.id); if (r.connected) { r.connected = false; r.status = 'unknown'; } r.err = '桥接服务不可达'; if (typeof run !== 'undefined' && run?.parts.includes(s.id)) { run.incomplete = true; run.tok.stop = true; } } }
   if (on) for (const s of sources) if (backendOf(s) === be && s.enabled) { const r = rt(s.id); r.err = ''; }
   renderSources(); renderOffline(); renderBridgeTxt();
 }
@@ -134,8 +157,12 @@ $('#dsList').addEventListener('contextmenu', e => {
   showMenu(e.clientX, e.clientY, [{ l: '编辑数据源', f: () => openAdd(s) }, { l: '设备信息', f: () => deviceInfo(s), dis: !infoOf(s) }, '-', { l: rt(s.id).connected ? '断开连接' : '连接', f: () => rt(s.id).connected ? toggleSource(s, false) : toggleSource(s, true) }, { l: '删除数据源', f: () => deleteSource(s) }]);
 });
 async function toggleSource(s, on) {
-  s.enabled = on; saveSources();
-  if (on) await connectSource(s); else { await disconnectSource(s); rt(s.id).err = ''; }
+  if (run?.parts.includes(s.id)) { toast('请先停止盘点，再更改数据源'); renderSources(); return; }
+  try {
+    if (on) { s.enabled = true; await connectSource(s); }
+    else { await disconnectSource(s); s.enabled = false; rt(s.id).err = ''; }
+  } catch (e) { toast('断开未确认：' + e.message); }
+  saveSources();
   renderSources(); renderOffline(); refreshParticipants();
 }
 function connArgs(s) {
@@ -149,15 +176,19 @@ async function connectSource(s) {
   finally { r.connecting = false; renderSources(); renderOffline(); refreshParticipants(); if (view === 'dscfg' && cfgSrc === s.id) renderCfgHead(); }
 }
 async function disconnectSource(s) {
-  const r = rt(s.id); if (!r.connected) return;
-  try { applySrcState(await backendOf(s).api('disconnect', { id: s.id })); } catch (e) { r.connected = false; }
+  const r = rt(s.id); if (!r.connected && r.status !== 'unknown' && !r.running) return;
+  try { applySrcState(await backendOf(s).api('disconnect', { id: s.id })); }
+  catch (e) { r.status = 'unknown'; r.err = e.message; throw e; }
 }
 function applySrcState(st) {
   const s = srcById(st.id); if (!s) return; const r = rt(st.id), was = r.connected;
   r.connected = !!st.connected; r.running = !!st.running;
+  r.status = st.status || (r.running ? 'running' : 'idle');
+  r.runId = st.runId;
   if (st.info) { r.info = st.info; s.lastInfo = st.info; saveSources(); }
   if (was && !r.connected && s.enabled) { r.err = r.err || '连接已断开'; if (run && run.parts.includes(s.id)) addLog({ id: s.id, level: 'warn', msg: '数据源在运行中断开', ts: Date.now() }); }
-  if (r.connected) r.err = '';
+  if (r.connected) r.err = st.error || '';
+  if (r.status === 'unknown' && run?.parts.includes(s.id)) { run.incomplete = true; run.tok.stop = true; }
   renderSources(); if (typeof refreshParticipants === 'function') refreshParticipants();
 }
 handlers.state = (st) => applySrcState(st);
@@ -169,8 +200,9 @@ handlers.hello = (d, be) => {
   renderUpdates();
 };
 async function deleteSource(s) {
+  if (run?.parts.includes(s.id)) return toast('请先停止盘点，再删除数据源');
   if (!confirm(`删除数据源“${nameOf(s)}”？其预设也会一并删除。`)) return;
-  await disconnectSource(s).catch(() => { });
+  try { await disconnectSource(s); } catch (e) { toast('断开未确认，数据源已保留：' + e.message); return; }
   sources = sources.filter(x => x !== s); delete runtime[s.id]; saveSources();
   if (cfgSrc === s.id) show('inventory'); renderSources(); renderOffline(); refreshParticipants();
 }
@@ -181,6 +213,7 @@ function daUI() {
   const d = $('#da-if').value;
   $$('.da-rest').forEach(e => e.hidden = d !== 'rest'); $$('.da-sim').forEach(e => e.hidden = d !== 'sim'); $$('.da-nsim').forEach(e => e.hidden = d === 'sim');
   $$('.da-bridge').forEach(e => e.hidden = !CLOUD || d === 'sim'); $$('.da-crd').forEach(e => e.hidden = d === 'sim'); $$('.da-cr').forEach(e => e.hidden = d === 'sim' || !$('#da-cred').checked);
+  $$('.da-token').forEach(e => e.hidden = d === 'sim' || !!window.TAGSCOPE_BRIDGE_TOKEN && !CLOUD);
   $('#da-port').placeholder = d === 'rest' ? ($('#da-tls').checked ? '443' : '80') : '5084';
   $('#da-host').placeholder = d === 'rest' ? '例如 192.168.1.242 或 impinj-12-34-56.local' : '例如 192.168.1.242 或 impinj-12-34-56.local:5084';
   $('#da-bnote').textContent = d === 'rest'
@@ -191,11 +224,13 @@ function daUI() {
 ['#da-if', '#da-tls', '#da-cred'].forEach(s => $(s).addEventListener('change', daUI));
 $('#da-advT').onclick = () => { const p = $('#da-adv'); p.hidden = !p.hidden; $('#da-advT .car').textContent = p.hidden ? '▼' : '▲'; };
 function openAdd(s) {
+  if (s && run?.parts.includes(s.id)) return toast('请先停止盘点，再编辑数据源');
   editSrc = s || null;
   $('#da-title').textContent = s ? '编辑数据源' : '添加数据源'; $('#da-ok').textContent = s ? '保存' : '添加数据源';
   const v = s || { host: '', nick: '', iface: CLOUD ? 'sim' : 'llrp', port: '', tls: true, ins: true, cred: false, user: '', pass: '', simTags: 40 };
   $('#da-host').value = v.host; $('#da-nick').value = v.nick; $('#da-if').value = v.iface; $('#da-port').value = v.port || ''; $('#da-tls').checked = !!v.tls; $('#da-ins').checked = v.ins !== false;
   $('#da-cred').checked = !!v.cred; $('#da-user').value = v.user || ''; $('#da-pass').value = v.pass || ''; $('#da-simn').value = v.simTags || 40; $('#da-bridge').value = v.bridge || bridgeUrl;
+  $('#da-token').value = bridgeToken(CLOUD ? v.bridge || bridgeUrl : '');
   $('#da-herr').hidden = $('#da-nerr').hidden = true; $('#da-if').disabled = !!s;
   daUI(); show('dsadd'); setTimeout(() => $('#da-host').focus(), 0);
 }
@@ -208,6 +243,7 @@ $('#da-ok').onclick = async () => {
   if ((!host && iface !== 'sim') || dup) return;
   const v = { host: host || 'simulator', nick: nick || (iface === 'sim' ? uniqueNick('模拟读写器') : ''), iface, port: $('#da-port').value, tls: $('#da-tls').checked, ins: $('#da-ins').checked, cred: $('#da-cred').checked, user: $('#da-user').value, pass: $('#da-pass').value, simTags: +$('#da-simn').value || 40 };
   if (CLOUD && iface !== 'sim') { v.bridge = normUrl($('#da-bridge').value) || 'http://localhost:8080'; bridgeUrl = v.bridge; store.set('bridge', bridgeUrl); }
+  if (iface !== 'sim' && $('#da-token').value.trim()) setBridgeToken(CLOUD ? v.bridge : '', $('#da-token').value.trim());
   let s = editSrc;
   if (s) { const reconnect = rt(s.id).connected; if (reconnect) await disconnectSource(s); Object.assign(s, v); saveSources(); renderSources(); if (s.enabled) await connectSource(s); }
   else { s = { id: uid(), ...v, enabled: true, presets: {}, active: 'default' }; sources.push(s); saveSources(); renderSources(); show('inventory'); await connectSource(s); if (rt(s.id).err) s.enabled = true; saveSources(); refreshParticipants(); return; }
@@ -262,7 +298,7 @@ function defaultPreset(i) {
     power: tx.includes(30) ? 30 : tx[tx.length - 1], rx: rx[0], maxSens: true, per: {}, gpi: {}, filters: [], ldc: { enabled: false, emptyTimeout: 500, pingInterval: 200 } };
 }
 const clone = o => JSON.parse(JSON.stringify(o));
-function presetCfg(s, name) { const d = defaultPreset(infoOf(s)); if (!name || name === 'default' || !s.presets[name]) return d; return { ...d, ...clone(s.presets[name]) }; }
+function presetCfg(s, name) { const d = defaultPreset(infoOf(s)); if (!name || name === 'default' || !s.presets[name]) return d; try { return TagScopeValidation.preset(s.presets[name], d); } catch (e) { toast('预设无效，已使用默认设置：' + e.message); return d; } }
 const activeCfg = s => presetCfg(s, s.presets[s.active] ? s.active : 'default');
 function antList(txt, max = 64) { return [...new Set(String(txt).split(/[\s,，;]+/).map(Number).filter(n => n > 0 && n <= max))].sort((a, b) => a - b); }
 function gpiTriggers(c) { const g = c.gpi || {}; let start = null, stop = null; for (const [p, v] of Object.entries(g)) { if (v.start) start = { port: +p, level: v.startLvl || 'high' }; if (v.stop) stop = { port: +p, level: v.stopLvl || 'low' }; } return { start, stop }; }
@@ -295,7 +331,7 @@ function fillCfg() {
   $('#dc-del').disabled = viewP === 'default';
   $('#dc-ants').value = c.ants; $('#dc-hub').textContent = (i.antennaCount || 0) > 4 && /R[47]\d0|R700|R420/.test(i.model || '') ? 'Antenna Hub' : '';
   const ml = modesOf(i); if (!ml.some(m => +m.id === +c.mode)) ml.push({ id: c.mode, label: `${c.mode} - 自定义` });
-  $('#dc-mode').innerHTML = ml.map(m => `<option value="${m.id}" ${+m.id === +c.mode ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+  $('#dc-mode').innerHTML = ml.map(m => `<option value="${esc(m.id)}" ${+m.id === +c.mode ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
   $('#dc-search').value = c.search; $('#dc-search').disabled = s.iface === 'llrp' && i.impinjExtensions === false;
   $('#dc-fastid').checked = !!c.fastId; $('#dc-pop').value = c.pop; $('#dc-ses').value = c.session; $('#dc-phase').checked = !!c.phase; $('#dc-dop').checked = !!c.doppler;
   $('#dc-dop').disabled = i.supportsDoppler === false;
@@ -321,8 +357,8 @@ function renderFilters() {
   $('#dc-flts').innerHTML = fs.map((f, k) => { const bad = f.match === f.miss; const auto = clean(f.mask).length * 4;
     return `<div class="flt" data-f="${k}"><h5>过滤器 ${k + 1}<span class="sp"></span><button class="btn sm" data-rm="${k}">移除</button></h5>
       <label class="row"><span>掩码（十六进制）:</span><input type="text" class="mono" data-k="mask" value="${esc(f.mask)}" spellcheck="false" placeholder="例如 E280"></label>
-      <label class="row"><span>位长度:</span><input type="number" data-k="bits" min="0" max="${auto}" value="${f.bits === '' || f.bits == null ? auto : f.bits}"></label>
-      <label class="row"><span>偏移（位）:</span><input type="number" data-k="pointer" min="0" value="${f.pointer}"></label>
+      <label class="row"><span>位长度:</span><input type="number" data-k="bits" min="1" max="${auto}" value="${esc(f.bits === '' || f.bits == null ? auto : f.bits)}"></label>
+      <label class="row"><span>偏移（位）:</span><input type="number" data-k="pointer" min="0" value="${esc(f.pointer)}"></label>
       <label class="row"><span>存储区:</span><select data-k="bank">${[['epc', 'EPC'], ['tid', 'TID'], ['user', 'User'], ['reserved', 'Reserved']].map(([v, l]) => `<option value="${v}" ${f.bank === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="row"><span>匹配动作:</span><select data-k="match" class="${bad ? 'inv' : ''}">${ACTS.map(([v, l]) => `<option value="${v}" ${f.match === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="row"><span>不匹配动作:</span><select data-k="miss" class="${bad ? 'inv' : ''}">${ACTS.map(([v, l]) => `<option value="${v}" ${f.miss === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -361,6 +397,7 @@ async function savePreset() {
   if (!validateGpi()) return toast('GPI 配置错误：同一端口的启动与停止电平不能相同');
   if ((draft.filters || []).some(f => f.match === f.miss)) return toast('过滤器的匹配与不匹配动作不能相同');
   if ((draft.filters || []).some(f => !clean(f.mask))) return toast('请填写过滤器掩码，或移除空过滤器');
+  try { draft = TagScopeValidation.preset(draft, defaultPreset(infoOf(s))); } catch (e) { return toast(e.message); }
   let name = viewP;
   if (viewP === 'default' && dirty) { name = await ask('保存为新预设', '预设名称:', uniqueP(s, 'copy_of_default'), validName(s)); if (!name) return; }
   if (name !== 'default') s.presets[name] = clone(draft);
@@ -378,8 +415,8 @@ $('#dc-import').onclick = () => $('#dc-file').click();
 $('#dc-file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const s = srcById(cfgSrc);
   try { const j = JSON.parse(await f.text()), p = j.preset || j; if (!p || typeof p !== 'object' || !('ants' in p)) throw new Error('不是 TagScope 预设文件');
     const n = await ask('导入预设', '预设名称:', uniqueP(s, j.name && j.name !== 'default' ? j.name : f.name.replace(/\.json$/i, '')), validName(s)); if (!n) return;
-    s.presets[n] = { ...defaultPreset(infoOf(s)), ...p }; viewP = n; saveSources(); loadDraft(); toast('已导入预设 ' + n); } catch (err) { toast('导入失败：' + err.message); } };
-$('#dc-refresh').onclick = async () => { const s = srcById(cfgSrc); if (!s.enabled) return toast('请先启用该数据源'); await disconnectSource(s); await connectSource(s); readCfgForm(); fillCfg(); if (!rt(s.id).err) toast('已刷新设备能力'); };
+    s.presets[n] = TagScopeValidation.preset(p, defaultPreset(infoOf(s))); viewP = n; saveSources(); loadDraft(); toast('已导入预设 ' + n); } catch (err) { toast('导入失败：' + err.message); } };
+$('#dc-refresh').onclick = async () => { const s = srcById(cfgSrc); if (run?.parts.includes(s.id)) return toast('请先停止盘点'); if (!s.enabled) return toast('请先启用该数据源'); await disconnectSource(s); await connectSource(s); readCfgForm(); fillCfg(); if (!rt(s.id).err) toast('已刷新设备能力'); };
 function tab(t) { $$('.tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t))); $('#dc-inv').hidden = t !== 'inv'; $('#dc-diag').hidden = t !== 'diag'; $('#dc-foot').hidden = t !== 'inv'; if (t === 'diag') fillCfg(); }
 $$('.tabs [data-tab]').forEach(b => b.onclick = () => tab(b.dataset.tab));
 $('#dc-gpo').addEventListener('change', async e => { const p = e.target.dataset.gpo; if (!p) return; const s = srcById(cfgSrc);

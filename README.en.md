@@ -75,8 +75,8 @@ Version 2.0 follows the ItemTest 2.14.1 layout: the sidebar holds Displays / Dat
 - A reader accepts only one LLRP client at a time. Close ItemTest, MultiReader and other software before connecting.
 - On connect, the reader's LLRP configuration is reset to defaults, as ItemTest does.
 - Kill and permalock cannot be undone. The UI asks for confirmation first.
-- The R700 REST interface does not provide tag read/write; use the LLRP driver for tag operations.
-- The 2.0 web app requires bridge 2.0 or later (multiple data sources). Download the bridge again if yours is older.
+- This version of the REST driver implements inventory only; use LLRP for tag read/write, lock and kill.
+- The 2.0.1 web app requires bridge 2.0.1 or later (pairing authentication and sequenced batches). Download the bridge again if yours is older.
 - Receive sensitivity in dBm is converted from the Impinj capability table: index 1 means maximum sensitivity and is shown as −80 dBm.
 
 ## File structure
@@ -105,3 +105,13 @@ Copyright © 2026 Hill. All rights reserved.
 Contact: Hill@iotrfid.top
 
 Impinj, ItemTest, Speedway and xArray are trademarks of Impinj, Inc. TagScope is independently developed software and is not affiliated with Impinj.
+
+
+### 2.0.1 pairing and run results
+
+- The startup console prints a random bridge pairing code. Opening `http://localhost:8080` on the bridge computer pairs automatically; the online app and other computers require that code. The code stays in browser session storage. Both the API and event stream require authentication.
+- To keep a fixed code, set `TAGSCOPE_TOKEN` to 24–256 non-whitespace characters. After a restart changes the code, update it in the data source editor.
+- For a custom bridge hostname, add `--allow-host=reader-bridge.local` (comma-separated, or `TAGSCOPE_ALLOW_HOST`). `--allow-origin` allows an origin but does not bypass pairing authentication.
+- A failed stop remains unconfirmed and can be retried. A timed-out tag write may have an unknown outcome: read back before retrying.
+- Each run has a unique ID and numbered batches. Stop replays trailing batches; unrecoverable gaps are marked incomplete. Log cache limits show a truncation warning.
+- `npm test` uses in-memory fault injection, HTTP/SSE routing, browser request logic and a simulated LLRP read/write flow. It does not connect to real readers; hardware and firmware compatibility still require acceptance testing.

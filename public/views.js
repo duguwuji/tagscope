@@ -24,7 +24,7 @@ let sort = { key: 'idx', dir: 1 }, selected = null;
 let tags = new Map(), srcStats = {}, totalReads = 0, order = 0, plotPts = [], readLog = [], rateBuf = [];
 let run = null, lastRun = null, clockMs = 0;
 
-function participants() { return sources.filter(s => s.enabled && rt(s.id).connected); }
+function participants() { return sources.filter(s => s.enabled && rt(s.id).connected && rt(s.id).status !== 'unknown'); }
 function refreshParticipants() { $('#inv-play').disabled = !run && !participants().length; renderBlank(); }
 function scenText() {
   const r = run;
@@ -33,7 +33,8 @@ function scenText() {
   if (O.scen === 'gpi') return 'GPI 触发 - ' + (r ? (r.gpiOn ? '读取中' : '等待 GPI 启动信号') : '由 GPI 启动');
   return '连续 - 永久运行' + (r && r.phase === 'reset' ? '（重置为 A 状态）' : '');
 }
-function clearData() { tags = new Map(); srcStats = {}; totalReads = 0; order = 0; plotPts = []; readLog = []; rateBuf = []; selected = null; }
+let logTruncated = false, runLogTruncated = false;
+function clearData() { tags = new Map(); srcStats = {}; totalReads = 0; order = 0; plotPts = []; readLog = []; rateBuf = []; selected = null; logTruncated = false; runLogTruncated = false; }
 const marginLevels = () => { const a = [], p0 = +O.p0, p1 = +O.p1, st = +O.ps || 0.25; for (let p = p0; p <= p1 + 1e-9; p += st) a.push(+p.toFixed(2)); return a; };
 
 function validateScenario(parts) {
@@ -47,8 +48,18 @@ function validateScenario(parts) {
   if (O.scen === 'margin' && +O.p1 < +O.p0) return '结束功率必须不小于起始功率';
   return '';
 }
-async function startAll(parts, ov) { const res = await Promise.allSettled(parts.map(s => backendOf(s).api('start', { id: s.id, cfg: wire(s, ov) }).then(applySrcState))); const bad = res.map((r, k) => r.status === 'rejected' ? `${nameOf(parts[k])}：${r.reason.message}` : null).filter(Boolean); if (bad.length) { bad.forEach(m => addLog({ level: 'error', msg: m, ts: Date.now() })); toast(bad[0]); } return bad.length < parts.length; }
-async function stopAll(parts) { await Promise.allSettled(parts.map(s => backendOf(s).api('stop', { id: s.id }).then(applySrcState))); }
+async function startAll(parts, ov) {
+  run.activeRuns = {};
+  const res = await Promise.allSettled(parts.map(async s => { const cfg = TagScopeValidation.inventory(wire(s, ov)), runId = uid() + '_' + Date.now().toString(36); run.activeRuns[s.id] = runId; applySrcState(await backendOf(s).api('start', { id: s.id, cfg, runId })); }));
+  const bad = res.map((r, k) => r.status === 'rejected' ? `${nameOf(parts[k])}：${r.reason.message}` : null).filter(Boolean);
+  if (bad.length) { run.incomplete = true; bad.forEach(m => addLog({ level: 'error', msg: m, ts: Date.now() })); toast(bad[0]); }
+  return bad.length < parts.length;
+}
+async function stopAll(parts) {
+  const res = await Promise.allSettled(parts.map(s => backendOf(s).api('stop', { id: s.id, runId: run?.activeRuns?.[s.id] }).then(applySrcState)));
+  const bad = res.filter(r => r.status === 'rejected');
+  if (bad.length) { if (run) run.incomplete = true; const msg = bad.map(r => r.reason.message).join('；'); addLog({ level: 'error', msg, ts: Date.now() }); toast(msg); if (bad.some(r => r.reason.code !== 'INCOMPLETE_DATA')) throw new Error(msg); }
+}
 async function wait(ms, tok) { const end = Date.now() + ms; while (Date.now() < end) { if (tok.stop) return false; await sleep(Math.min(100, end - Date.now())); } return !tok.stop; }
 async function doReset(parts, tok) {
   run.phase = 'reset'; addLog({ level: 'info', msg: `将标签重置为 A 状态（Single Target Reset，${O.rdur} s）`, ts: Date.now() });
@@ -57,7 +68,7 @@ async function doReset(parts, tok) {
 async function startShowcase() {
   const parts = participants(), err = validateScenario(parts); if (err) { toast(err); return; }
   clearData(); const tok = { stop: false };
-  run = { tok, parts: parts.map(s => s.id), t0: Date.now(), phase: 'delay', i: 0, n: 1, activeMs: 0, onSince: 0, power: null, startedAt: new Date(), gpiOn: false, names: Object.fromEntries(parts.map(s => [s.id, nameOf(s)])) };
+  run = { tok, parts: parts.map(s => s.id), activeRuns: {}, incomplete: false, t0: Date.now(), phase: 'delay', i: 0, n: 1, activeMs: 0, onSince: 0, power: null, startedAt: new Date(), gpiOn: false, names: Object.fromEntries(parts.map(s => [s.id, nameOf(s)])) };
   lastRun = run; setPlay(true); render(true);
   try {
     const levels = O.scen === 'margin' ? marginLevels() : null;
@@ -67,21 +78,32 @@ async function startShowcase() {
       run.i = k + 1; run.power = levels ? levels[k] : null;
       if (O.reset && (k === 0 || O.resetWhen === 'each')) { await doReset(parts, tok); if (tok.stop) break; }
       if (O.beep && (O.scen === 'timed' || O.scen === 'margin')) beep();
-      run.phase = 'on'; run.onSince = Date.now(); run.runStart = Date.now(); run.runRows = [];
+      run.phase = 'on'; run.onSince = Date.now(); run.runStart = Date.now(); run.runRows = []; runLogTruncated = false;
       if (!(await startAll(parts, { power: run.power, gpi: O.scen === 'gpi' }))) { tok.stop = true; break; }
       if (O.scen === 'continuous' || O.scen === 'gpi') { while (!tok.stop) await sleep(100); }
       else { await wait(O.on * 1000, tok); }
       await stopAll(parts); endPhase(); flushRunLog(k + 1);
       if (!tok.stop && k < run.n - 1 && +O.off > 0) { run.phase = 'off'; if (!(await wait(O.off * 1000, tok))) break; }
     }
-  } catch (e) { toast(e.message); addLog({ level: 'error', msg: e.message, ts: Date.now() }); }
+  } catch (e) { if (run) run.incomplete = true; toast(e.message); addLog({ level: 'error', msg: e.message, ts: Date.now() }); }
   finally {
-    if (run && run.phase === 'on') { await stopAll(parts); endPhase(); flushRunLog(run.i); } else if (run && (run.phase === 'reset' || run.phase === 'gap')) await stopAll(parts);
-    if (run) { clockMs = Date.now() - run.t0; run.done = true; } run = null; setPlay(false); render(true);
+    let stopped = true;
+    try { if (run && ['on', 'reset', 'gap'].includes(run.phase)) { await stopAll(parts); if (run.phase === 'on') { endPhase(); flushRunLog(run.i); } } }
+    catch (e) { stopped = false; run.phase = 'error'; run.incomplete = true; toast('停止未确认，点击停止按钮重试：' + e.message); }
+    if (run) { clockMs = Date.now() - run.t0; run.done = stopped; }
+    if (stopped) { if (run?.incomplete) toast('本次结果不完整，请查看日志后重新运行'); run = null; }
+    setPlay(!stopped); render(true);
   }
 }
-function endPhase() { if (run && run.phase === 'on') { run.activeMs += Date.now() - run.onSince; run.phase = 'idle'; } }
-function stopShowcase() { if (run) run.tok.stop = true; }
+function endPhase() { if (run && run.phase === 'on') { if (O.scen !== 'gpi' || run.gpiOn) run.activeMs += Date.now() - run.onSince; run.phase = 'idle'; } }
+async function stopShowcase() {
+  if (!run) return; run.tok.stop = true;
+  if (run.phase !== 'error' || run.retrying) return;
+  run.retrying = true;
+  try { await stopAll(run.parts.map(srcById).filter(Boolean)); flushRunLog(run.i); run.done = true; clockMs = Date.now() - run.t0; run = null; setPlay(false); render(true); toast('盘点已停止；本次结果不完整'); }
+  catch (e) { toast('停止未确认：' + e.message); }
+  finally { if (run) run.retrying = false; }
+}
 function setPlay(on) { $('#playIco').toggleAttribute('hidden', on); $('#stopIco').toggleAttribute('hidden', !on); // SVG elements have no .hidden property
   $('#inv-play').title = on ? '停止' : '开始'; $('#inv-play').setAttribute('aria-label', on ? '停止盘点' : '开始盘点'); $('#inv-gear').disabled = on; refreshParticipants(); }
 $('#inv-play').onclick = () => run ? stopShowcase() : startShowcase();
@@ -91,10 +113,11 @@ handlers.rospec = d => { if (!run || !run.parts.includes(d.id) || O.scen !== 'gp
 handlers.gpi = d => addLog({ id: d.id, level: 'info', msg: `GPI ${d.port} → ${d.level ? '高' : '低'}`, ts: d.ts });
 
 handlers.tags = b => {
-  if (!run || run.phase !== 'on' || !run.parts.includes(b.id)) return;
+  if (!run || !['on', 'error'].includes(run.phase) || !run.parts.includes(b.id) || b.runId !== run.activeRuns[b.id]) return;
   if (O.scen === 'gpi' && !run.gpiOn && !run.gotRospec) run.gpiOn = true;
   const now = Date.now(), rel = now - run.t0, st = srcStats[b.id] || (srcStats[b.id] = { reads: 0, epcs: new Map() });
-  st.reads += b.total; totalReads += b.total; rateBuf.push([now, b.total]);
+  st.reads += b.total; totalReads += b.total;
+  if (O.rwin > 0) { const time = Math.floor(now / 100) * 100, last = rateBuf[rateBuf.length - 1]; if (last && last[0] === time) last[1] += b.total; else rateBuf.push([time, b.total]); while (rateBuf.length && rateBuf[0][0] < now - Math.min(3600, O.rwin) * 1000) rateBuf.shift(); }
   const s = srcById(b.id), logOn = store.get('logOn', false);
   for (const r of b.reads) {
     const epc = clean(r.epc); if (!epc) continue;
@@ -105,13 +128,15 @@ handlers.tags = b => {
     if (r.tid) t.tid = clean(r.tid); if (r.pc) t.pc = r.pc; if (r.xpc) t.xpc = r.xpc; if (r.crh) t.crh = r.crh; if (r.phase != null) t.phase = r.phase; if (r.doppler != null) t.doppler = r.doppler; if (r.freq != null) t.freq = r.freq; if (r.rts) t.rts = r.rts;
     st.epcs.set(epc, (st.epcs.get(epc) || 0) + r.count);
     if (logOn && run.runRows && run.runRows.length < 500000) run.runRows.push([new Date(r.ts || now).toISOString(), epc, r.tid || '', r.antenna ?? '', r.rssi ?? '', r.freq ?? '', s ? (s.iface === 'sim' ? nameOf(s) : s.host) : '', r.phase ?? '', r.doppler ?? '', run.power ?? r.power ?? '', r.count].join(','));
+    else if (logOn && run.runRows && !runLogTruncated) { runLogTruncated = true; run.logTruncated = true; toast('本轮日志已达 500000 条上限，后续明细未缓存'); }
     if (readLog.length < 200000) readLog.push([new Date(r.ts || now).toISOString(), epc, r.tid || '', r.antenna ?? '', r.rssi ?? '', r.freq ?? '', s ? nameOf(s) : '', r.phase ?? '', r.doppler ?? '', run.power ?? r.power ?? '', r.count].join(','));
+    else if (!logTruncated) { logTruncated = true; toast('读取记录已达 200000 条上限，后续明细未缓存；统计仍继续'); }
   }
 };
 function readRate() {
   const now = Date.now(); if (!lastRun) return 0;
-  const active = (lastRun.activeMs + (run && run.phase === 'on' ? now - run.onSince : 0)) / 1000;
-  const W = +O.rwin || 0;
+  const active = (lastRun.activeMs + (run && run.phase === 'on' && (O.scen !== 'gpi' || run.gpiOn) ? now - run.onSince : 0)) / 1000;
+  const W = Math.min(3600, +O.rwin || 0);
   if (W > 0 && active > W) { while (rateBuf.length && rateBuf[0][0] < now - W * 1000) rateBuf.shift(); return rateBuf.reduce((a, b) => a + b[1], 0) / W; }
   return active > 0 ? totalReads / active : 0;
 }
@@ -279,7 +304,7 @@ $('#is-save').onclick = () => {
     view: $('[name=iv]:checked').value, flip: $('#is-flip').checked, toiSum: $('#is-toisum').checked, scen: $('[name=rs]:checked').value, gpiReset: $('#is-gpireset').checked,
     delay: Math.max(0, Math.floor(+$('#is-delay').value || 0)), on: Math.max(1, Math.floor(+$('#is-on').value || 10)), off: Math.max(0, Math.floor(+$('#is-off').value || 0)), beep: $('#is-beep').checked, runs: Math.max(1, Math.floor(+$('#is-runs').value || 1)),
     p0: +$('#is-p0').value, p1: +$('#is-p1').value, ps: +$('#is-ps').value, plot: $('#is-plot').checked, hexman: $('#is-hexman').checked,
-    reset: $('#is-reset').checked, resetWhen: $('[name=rst]:checked')?.value || 'initial', rdur: Math.min(999, Math.max(1, Math.floor(+$('#is-rdur').value || 5))), rwin: Math.max(0, Math.floor(+$('#is-rwin').value || 0)),
+    reset: $('#is-reset').checked, resetWhen: $('[name=rst]:checked')?.value || 'initial', rdur: Math.min(999, Math.max(1, Math.floor(+$('#is-rdur').value || 5))), rwin: Math.min(3600, Math.max(0, Math.floor(+$('#is-rwin').value || 0))),
   };
   const old = O; O = n; const err = n.scen === 'gpi' || n.scen === 'margin' ? validateScenario(participants()) : '';
   if (err) { O = old; dialog(`<h3>无法保存</h3><p>${esc(err)}</p><div class="acts"><button class="btn pri" data-close>确定</button></div>`); return; }
@@ -405,10 +430,11 @@ async function tmOp(req, label) {
   const s = srcById($('#tm-src').value); if (!s) { tmStatus('bad', '错误：没有可用的数据源（需要已启用、已连接且支持标签读写）'); return null; }
   const byTid = $('#tm-rtid').checked, epc = clean($('#tm-epc').value), tid = clean($('#tm-tid').value);
   if (byTid ? !tid : !epc) { tmStatus('bad', `错误：请填写完整的${byTid ? ' TID' : ' EPC'}`); return null; }
-  const pw = clean($('#tm-pwd').value); if (pw.length > 8) { tmStatus('bad', '错误：访问密码最多 8 位十六进制'); return null; }
+  const pw = req.password ?? $('#tm-pwd').value.trim(); if (!/^[0-9a-f]{0,8}$/i.test(pw)) { tmStatus('bad', '错误：密码最多 8 位十六进制'); return null; }
   const t0 = performance.now(); tmLock(true); tmStatus('', `${label}中…（${nameOf(s)}，超时 5 秒）`);
   const tick = setInterval(() => $('#tm-clock').textContent = clockStr(performance.now() - t0), 31);
-  try { const r = await backendOf(s).api('access', { id: s.id, ...req, targetEpc: byTid ? '' : epc, targetTid: byTid ? tid : '', password: pw, timeout: 5, cfg: wire(s) }); return r; }
+  try { const request = { ...req, targetEpc: byTid ? '' : epc, targetTid: byTid ? tid : '', password: req.password ?? pw, timeout: 5 };
+    const r = await backendOf(s).api('access', { ...TagScopeValidation.access(request), id: s.id, cfg: wire(s) }); if (r.cleanupOk === false) toast(r.message); return r; }
   catch (e) { tmStatus('bad', '错误：' + e.message); return null; }
   finally { clearInterval(tick); $('#tm-clock').textContent = clockStr(performance.now() - t0); tmLock(false); tmWords(); }
 }
@@ -439,7 +465,7 @@ $('#tm-setpwd').onclick = async () => {
 };
 $('#tm-lock').onclick = async () => { const f = $('#tm-lfield').value, p = $('#tm-lpriv').value; if (/perma/.test(p) && !confirm('永久锁定 / 永久解锁不可撤销，确定继续？')) return;
   const r = await tmOp({ op: 'lock', field: f, privilege: p }, '锁定'); if (r) tmStatus(r.ok ? 'ok' : 'bad', r.ok ? `锁定成功：${f.toUpperCase()} → ${$('#tm-lpriv').selectedOptions[0].text}` : `锁定失败：${r.message}`); };
-$('#tm-kill').onclick = async () => { const k = clean($('#tm-kpwd').value); if (!/^[0-9A-F]{1,8}$/.test(k) || !parseInt(k, 16)) return tmStatus('bad', '错误：灭活密码必须为非 0 的 8 位十六进制'); if (!confirm('灭活后标签将永久失效，确定继续？')) return;
+$('#tm-kill').onclick = async () => { const k = $('#tm-kpwd').value.trim(); if (!/^[0-9a-f]{1,8}$/i.test(k) || !parseInt(k, 16)) return tmStatus('bad', '错误：灭活密码必须为非 0 的 1–8 位十六进制'); if (!confirm('灭活后标签将永久失效，确定继续？')) return;
   const r = await tmOp({ op: 'kill', password: k }, '灭活'); if (r) tmStatus(r.ok ? 'ok' : 'bad', r.ok ? '灭活成功' : `灭活失败：${r.message}`); };
 
 /* =====================================================================
@@ -448,6 +474,8 @@ $('#tm-kill').onclick = async () => { const k = clean($('#tm-kpwd').value); if (
 const LOG_HDR = 'Timestamp,EPC,TID,Antenna,RSSI,Frequency,Hostname,PhaseAngle,DopplerFrequency,Power,ReadCount';
 function logHeader(r, extra) {
   const lines = [`# TagScope ${VERSION} inventory log`, `# Run started: ${r.startedAt.toISOString()}  (${r.startedAt.toString()})`, `# Scenario: ${_T(scenText())}${extra ? '  ' + extra : ''}`];
+  lines.push('# Data completeness: ' + (r.incomplete ? 'INCOMPLETE — check errors' : 'complete within received reader reports'));
+  if (r.logTruncated || logTruncated) lines.push('# WARNING: log cache limit reached; exported details are truncated');
   for (const id of r.parts) { const s = srcById(id); if (!s) continue; const i = infoOf(s) || {}, c = activeCfg(s);
     lines.push(`# Reader: ${nameOf(s)} | host=${s.iface === 'sim' ? 'simulator' : s.host} | interface=${IFN[s.iface]} | model=${i.model || ''} | firmware=${i.firmware || ''} | preset=${s.presets[s.active] ? s.active : 'default'} | antennas=${c.ants} | mode=${c.mode} | session=${c.session} | search=${c.search} | power=${r.power ?? c.power} | fastId=${c.fastId}`); }
   return lines;
@@ -459,18 +487,19 @@ function flushRunLog(i) {
   if (store.get('logUniq', false)) dl(`${pre}_${st}${suf}_unique.csv`, uniqueCsv());
   run.runRows = [];
 }
-function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [cols.map(k => _T(CK[k].l)).join(','), ...rowsSorted().map(t => cols.map(k => { const v = cellStr(t, k); return /[,"]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(','))].join('\n'); }
+function csvCell(v) { v = String(v ?? ''); return /[,"\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
+function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [cols.map(k => csvCell(_T(CK[k].l))).join(','), ...rowsSorted().map(t => cols.map(k => csvCell(cellStr(t, k))).join(','))].join('\n'); }
 $('#lg-on').onchange = e => store.set('logOn', e.target.checked);
 $('#lg-uniq').onchange = e => store.set('logUniq', e.target.checked);
 $('#lg-prefix').oninput = e => store.set('logPrefix', e.target.value);
 $('#lg-dl').onclick = () => { if (!readLog.length) return toast('暂无读取记录'); dl(`${store.get('logPrefix', 'TagScope') || 'TagScope'}_${stamp()}.csv`, [...(lastRun ? logHeader(lastRun) : []), LOG_HDR, ...readLog].join('\n')); };
 $('#lg-dlu').onclick = () => { if (!tags.size) return toast('暂无标签'); dl(`${store.get('logPrefix', 'TagScope') || 'TagScope'}_${stamp()}_unique.csv`, uniqueCsv()); };
-function fillLogging() { $('#lg-on').checked = store.get('logOn', false); $('#lg-uniq').checked = store.get('logUniq', false); $('#lg-prefix').value = store.get('logPrefix', 'TagScope'); $('#lg-info').textContent = `当前缓存 ${readLog.length} 条读取记录，${tags.size} 个唯一标签`; }
+function fillLogging() { $('#lg-on').checked = store.get('logOn', false); $('#lg-uniq').checked = store.get('logUniq', false); $('#lg-prefix').value = store.get('logPrefix', 'TagScope'); $('#lg-info').textContent = `当前缓存 ${readLog.length} 条读取记录，${tags.size} 个唯一标签` + (logTruncated ? '（记录已截断）' : '') + (lastRun?.incomplete ? '（本次结果不完整）' : ''); }
 
 const cmpVer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
 function bridgeVer() { const b = [...backends.values()].find(x => x.kind === 'bridge' && x.online); return b ? b.version : null; }
 function renderUpdates() { $('#up-web').textContent = VERSION; $('#up-br').textContent = bridgeVer() || '未连接'; $('#ab-ver').textContent = VERSION; $('#ab-br').textContent = bridgeVer() || '未连接'; $('#up-auto').checked = store.get('autoUpd', true);
-  const bv = bridgeVer(); if (bv && cmpVer(bv, '2.0.0') < 0) { $('#up-msg').textContent = `桥接服务版本 ${bv} 过旧，TagScope ${VERSION} 需要 2.0.0 或更高版本，请下载最新桥接服务。`; } }
+  const bv = bridgeVer(); if (bv && cmpVer(bv, '2.0.1') < 0) { $('#up-msg').textContent = `桥接服务版本 ${bv} 过旧，TagScope ${VERSION} 需要 2.0.1 或更高版本，请下载最新桥接服务。`; } }
 async function checkUpdates(manual) {
   try { const r = await fetch('https://raw.githubusercontent.com/duguwuji/tagscope/main/package.json', { cache: 'no-store' }); const j = await r.json(); $('#up-latest').textContent = j.version;
     const old = [VERSION, bridgeVer()].filter(Boolean).some(v => cmpVer(v, j.version) < 0);

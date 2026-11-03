@@ -11,6 +11,12 @@ const CJK = /[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/;
 
 /* ---------- dictionary (whole strings and fragments) ---------- */
 const D = {
+  '桥接配对码:': 'Bridge pairing code:', '连接桥接服务': 'Connect to bridge',
+  '填写桥接启动窗口中的配对码，仅保存在当前浏览器会话。': 'Enter the pairing code from the bridge console. It is kept only for this browser session.',
+  '请先停止盘点，再更改数据源': 'Stop inventory before changing data sources',
+  '请先停止盘点，再删除数据源': 'Stop inventory before deleting a data source',
+  '请先停止盘点，再编辑数据源': 'Stop inventory before editing a data source',
+  '本次结果不完整，请查看日志后重新运行': 'Results are incomplete. Check the log and run again.',
   // navigation / layout
   '展示': 'Displays', '盘点': 'Inventory', '定位': 'Location', '方向': 'Direction', '标签存储': 'Tag Memory', '数据源': 'Data Sources', '数据源 ⊕': 'Data Sources ⊕',
   '关注标签': 'Tags of Interest', '设置': 'Settings', '更新': 'Updates', '标签日志': 'Tag Logging', '关于': 'About', '导航': 'Navigation', '日志': 'Log', '调试': 'Debug',
@@ -153,7 +159,7 @@ const P = [
   [/已载入同名关注标签文件“(.+)”/, 'A Tags of Interest file named "$1" is already loaded'],
   [/当前缓存 (\d+) 条读取记录，(\d+) 个唯一标签/, 'Buffered: $1 reads, $2 unique tags'],
   [/数据源“(.+)”不支持 GPI 触发/, 'Data source "$1" does not support GPI trigger'],
-  [/桥接服务版本 (\S+) 过旧，TagScope (\S+) 需要 2.0.0 或更高版本，请下载最新桥接服务。/, 'Bridge version $1 is too old. TagScope $2 requires 2.0.0 or later; download the latest bridge.'],
+  [/桥接服务版本 (\S+) 过旧，TagScope (\S+) 需要 2.0.1 或更高版本，请下载最新桥接服务。/, 'Bridge version $1 is too old. TagScope $2 requires 2.0.1 or later; download the latest bridge.'],
   [/访问密码已设置为 (\S+)（保留区字 2–3）/, 'Access password set to $1 (reserved bank words 2–3)'],
   [/请在数据源“(.+)”的当前预设中勾选一个 GPI 启动端口/, 'Tick a GPI start port in the current preset of data source "$1"'],
   [/错误：请在全部 (\d+) 个字框中填写 4 位十六进制/, 'Error: enter 4 hex digits in all $1 word boxes'],

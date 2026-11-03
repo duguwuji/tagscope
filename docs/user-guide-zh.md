@@ -1,6 +1,6 @@
 # TagScope 用户手册
 
-适用版本：TagScope 2.0.0（网页版与桥接服务）  
+适用版本：TagScope 2.0.1（网页版与桥接服务）  
 作者：Hill · <Hill@iotrfid.top>  
 在线版：<https://tagscope.iotrfid.top>  
 源代码：<https://github.com/duguwuji/tagscope>  
@@ -43,7 +43,7 @@ TagScope 是一个网页版的 UHF RFID 读写器测试与标签观测工具，�
 | 接口 | 适用设备 | 能力 |
 |---|---|---|
 | Impinj LLRP 接口 | Speedway R120 / R220 / R420、xPortal、xArray / xSpan（盘点），以及切换到 LLRP 模式的 R700 / R660 | 功能最完整：盘点、过滤、GPI/GPO、标签读写、锁定、灭活、低占空比 |
-| Impinj IoT 设备接口（R700 REST） | 运行 IoT Device Interface 的 R700 / R660 | 盘点、Gen2 过滤、相位角；不支持标签读写和 GPI 触发 |
+| Impinj IoT 设备接口（R700 REST） | 运行 IoT Device Interface 的 R700 / R660 | 盘点、Gen2 过滤、相位角；本版本驱动未实现标签读写和 GPI 触发 |
 | 模拟读写器 | 不需要硬件 | 模拟一批常见芯片的标签，支持全部功能，用于熟悉界面和演示 |
 
 > TagScope 是独立项目，与 Impinj, Inc. 无关联。Impinj、ItemTest、Octane、FastID、TagFocus 是 Impinj, Inc. 的商标。
@@ -78,7 +78,7 @@ TagScope 是一个网页版的 UHF RFID 读写器测试与标签观测工具，�
    - macOS / Linux：运行 `./start.sh`，或在项目目录执行 `node server.js`
 4. 控制台显示监听地址后，打开 <http://localhost:8080>，或在在线版中把“桥接服务地址”设为 `http://localhost:8080`。
 
-> 2.0 版网页需要 2.0 及以上的桥接服务（多数据源接口）。如果“更新”页显示的桥接服务版本低于 2.0，请重新下载。
+> 2.0.1 网页需要 2.0.1 及以上的桥接服务（配对认证与批次编号）。旧版桥接服务请重新下载。
 
 ### 2.4 桥接服务参数
 
@@ -523,7 +523,7 @@ Timestamp,EPC,TID,Antenna,RSSI,Frequency,Hostname,PhaseAngle,DopplerFrequency,Po
 
 **标签存储读写失败**
 
-- 确认使用 LLRP 接口或模拟器（REST 接口不支持标签读写）。
+- 确认使用 LLRP 接口或模拟器（本版本 REST 驱动未实现标签读写）。
 - 写入锁定区域需要正确的访问密码。
 - 标签距离天线太远时写入容易失败，写入所需功率通常高于读取。
 - 部分芯片不支持 BlockWrite，失败时取消勾选“使用块写”再试。
@@ -578,3 +578,13 @@ docs/user-guide-en.md  英文版手册
 ---
 
 © 2026 Hill · <Hill@iotrfid.top>
+
+
+### 2.0.1 配对与运行结果
+
+- 启动窗口会打印随机桥接配对码。直接在本机打开 `http://localhost:8080` 可自动配对；在线网页版和其他电脑需填写该配对码。配对码仅保存在浏览器当前会话中，API 和数据流均需认证。
+- 如需固定配对码，可通过环境变量 `TAGSCOPE_TOKEN` 设置 24–256 个非空白字符。重启产生新配对码后，在数据源编辑页更新配对码。
+- 使用自定义桥接主机名时加 `--allow-host=reader-bridge.local`（支持逗号分隔；也可用 `TAGSCOPE_ALLOW_HOST`）。`--allow-origin` 只配置来源，不会取消配对认证。
+- 停止失败会显示“停止未确认”，保留运行状态并允许再次停止；标签写入超时后可能显示“结果未知”，请读回核验。
+- 每轮使用独立运行编号与批次序号。停止时补齐末批，缺失无法补齐时明确标记结果不完整；日志达到缓存上限时会提示截断。
+- `npm test` 在内存中验证故障恢复、HTTP/SSE 访问保护、浏览器请求逻辑及模拟 LLRP 读写流程，不连接真实读写器。实机兼容性仍需按目标固件验收。
