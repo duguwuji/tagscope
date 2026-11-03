@@ -10,3 +10,6 @@ routes = [{ pattern = "tagscope.iotrfid.top", custom_domain = true }]
 type = "Text"
 globs = ["**/*.html", "./public/*.js", "**/public/*.js"]
 fallthrough = true
+
+# Allow Cloudflare Workers Builds to deploy isolated branch previews.
+[previews]
