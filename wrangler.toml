@@ -4,6 +4,7 @@ main = "worker.js"
 compatibility_date = "2025-10-01"
 find_additional_modules = true
 workers_dev = false
+preview_urls = true
 routes = [{ pattern = "tagscope.iotrfid.top", custom_domain = true }]
 
 [[rules]]
