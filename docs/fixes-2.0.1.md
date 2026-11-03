@@ -29,3 +29,7 @@
 未连接、盘点、写入、锁定或灭活任何真实标签或读写器；未验证目标 R700 固件的接口行为；未部署 Cloudflare，未上传 GitHub。当前目录没有 Git 元数据，无法生成提交哈希或变更差异基线。
 
 上线前仍需真实设备及浏览器验收，尤其是写入后的独立读回、停止后的 RF 状态、REST EOF 与弱网恢复、多源短时测试的末批统计。
+
+## GitHub 与 Cloudflare 构建
+
+Cloudflare Worker `tagscope` 已连接 `duguwuji/tagscope`，生产分支为 `main`；构建命令为 `npm test`，部署命令为 `npx wrangler deploy`。发布结果以 Cloudflare 构建和部署状态为准。
