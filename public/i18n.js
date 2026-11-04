@@ -220,6 +220,7 @@ function trText(n) { const v = n.nodeValue; if (!v || !CJK.test(v)) return; cons
 function trTree(root) {
   if (root.nodeType === 3) return trText(root);
   if (root.nodeType !== 1 || root.closest(SKIP)) return;
+  if (root.matches?.('[data-epc]')) return; // inventory rows only contain data, not UI text
   trAttrs(root);
   for (const el of root.querySelectorAll('[title],[placeholder],[aria-label],[alt]')) if (!el.closest(SKIP)) trAttrs(el);
   const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) trText(n);

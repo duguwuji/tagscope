@@ -118,7 +118,7 @@
       await new Promise(res => setTimeout(res, 150 + Math.random() * 150));
       if (!t) return { ok: false, op: r.op, message: `超时（${+r.timeout || 5}s 内未找到目标标签）` };
       const pwd = clean(r.password).padStart(8, '0').slice(-8), apwd = t.reserved.substr(8, 8);
-      const locked = f => t.locks[f] && t.locks[f] !== 'unlock' && apwd !== '00000000' && pwd !== apwd;
+      const locked = f => t.locks[f] && t.locks[f] !== 'unlock' && t.locks[f] !== 'permaunlock' && apwd !== '00000000' && pwd !== apwd;
       const get = b => b === 'epc' ? '0000' + t.pc + t.epc : b === 'tid' ? t.tid : b === 'user' ? t.user : t.reserved;
       const put = (b, p, d) => { if (b === 'epc') { const m = get('epc'); const n = (m.slice(0, p) + d + m.slice(p + d.length)); t.pc = n.substr(4, 4); t.epc = n.slice(8, 8 + ((parseInt(t.pc, 16) >> 11) & 31) * 4); } else if (b === 'user') t.user = (t.user.slice(0, p) + d + t.user.slice(p + d.length)).slice(0, 128); else if (b === 'reserved') t.reserved = (t.reserved.slice(0, p) + d + t.reserved.slice(p + d.length)).slice(0, 16); };
       const field = b => b === 'reserved' ? 'access' : b;

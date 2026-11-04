@@ -58,7 +58,12 @@ async function startAll(parts, ov) {
 async function stopAll(parts) {
   const res = await Promise.allSettled(parts.map(s => backendOf(s).api('stop', { id: s.id, runId: run?.activeRuns?.[s.id] }).then(applySrcState)));
   const bad = res.filter(r => r.status === 'rejected');
-  if (bad.length) { if (run) run.incomplete = true; const msg = bad.map(r => r.reason.message).join('；'); addLog({ level: 'error', msg, ts: Date.now() }); toast(msg); if (bad.some(r => r.reason.code !== 'INCOMPLETE_DATA')) throw new Error(msg); }
+  if (bad.length) {
+    if (run) run.incomplete = true;
+    const msg = bad.map(r => r.reason.message).join('；'); addLog({ level: 'error', msg, ts: Date.now() }); toast(msg);
+    const real = bad.filter(r => r.reason.code !== 'INCOMPLETE_DATA');
+    if (real.length) { const e = new Error(msg); e.runChanged = real.every(r => /运行已改变/.test(r.reason.message)); throw e; }
+  }
 }
 async function wait(ms, tok) { const end = Date.now() + ms; while (Date.now() < end) { if (tok.stop) return false; await sleep(Math.min(100, end - Date.now())); } return !tok.stop; }
 async function doReset(parts, tok) {
@@ -101,7 +106,12 @@ async function stopShowcase() {
   if (run.phase !== 'error' || run.retrying) return;
   run.retrying = true;
   try { await stopAll(run.parts.map(srcById).filter(Boolean)); flushRunLog(run.i); run.done = true; clockMs = Date.now() - run.t0; run = null; setPlay(false); render(true); toast('盘点已停止；本次结果不完整'); }
-  catch (e) { toast('停止未确认：' + e.message); }
+  catch (e) {
+    if (e.runChanged) {
+      run.incomplete = true; run.done = true; clockMs = Date.now() - run.t0; run = null; setPlay(false); render(true);
+      toast('桥接端的运行已改变，本次结果不完整；请重新开始盘点');
+    } else toast('停止未确认：' + e.message);
+  }
   finally { if (run) run.retrying = false; }
 }
 function setPlay(on) { $('#playIco').toggleAttribute('hidden', on); $('#stopIco').toggleAttribute('hidden', !on); // SVG elements have no .hidden property
@@ -111,6 +121,11 @@ handlers.rospec = d => { if (!run || !run.parts.includes(d.id) || O.scen !== 'gp
   if (d.ev === 'start') { if (O.gpiReset) { run.t0 = Date.now(); } run.onSince = Date.now(); } else { run.activeMs += Date.now() - run.onSince; }
   if (run.runRows) run.runRows.push(`# GPI ${d.ev === 'start' ? 'START' : 'STOP'} ${new Date(d.ts).toISOString()} ${run.names[d.id]}`); };
 handlers.gpi = d => addLog({ id: d.id, level: 'info', msg: `GPI ${d.port} → ${d.level ? '高' : '低'}`, ts: d.ts });
+handlers.dataError = e => {
+  if (run) { run.incomplete = true; run.tok.stop = true; }
+  addLog({ level: 'error', msg: e.message, ts: Date.now() });
+  toast(e.message);
+};
 
 handlers.tags = b => {
   if (!run || !['on', 'error'].includes(run.phase) || !run.parts.includes(b.id) || b.runId !== run.activeRuns[b.id]) return;
@@ -230,7 +245,7 @@ function render(force) {
   if (O.view === 'table') renderTable(); else renderList();
   renderToiSum(); renderBlank();
   $('#f-uniq').textContent = tags.size; $('#f-rate').textContent = readRate().toFixed(3); $('#scenTxt').textContent = scenText();
-  if (run && run.phase === 'on') { const t = (now - lastRun.t0) / 1000; const p = plotPts[plotPts.length - 1]; if (!p || p[1] !== tags.size || t - p[0] > 1) plotPts.push([t, tags.size]); }
+  if (run && run.phase === 'on') { const t = (now - lastRun.t0) / 1000; const p = plotPts[plotPts.length - 1]; if (!p || p[1] !== tags.size || t - p[0] > 1) plotPts.push([t, tags.size]); if (plotPts.length > 20000) plotPts.splice(0, plotPts.length - 19000); }
   $('#plot').hidden = !O.plot; if (O.plot) drawPlot();
 }
 function drawPlot() {
@@ -319,8 +334,8 @@ let toiFiles = (store.get('toi', []) || []).map(hydrateToi);
 let toiView = null;
 function hydrateToi(f) { const map = new Map(f.tags); return { ...f, map, colorOf: e => tint(map.get(e) || f.color) }; }
 const tint = c => `color-mix(in srgb, ${c} 45%, white)`;
-function cssColor(c) { if (!c) return null; c = String(c).trim(); if (/^#?[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c)) { c = c.replace('#', ''); return '#' + (c.length === 8 ? c.slice(2) : c); } const o = new Option().style; o.color = c; return o.color ? c.toLowerCase() : null; }
-function saveToi() { store.set('toi', toiFiles.map(({ id, name, on, color, tags: t }) => ({ id, name, on, color, tags: t }))); }
+function cssColor(c) { if (!c) return null; c = String(c).trim(); if (/^#?[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c)) { c = c.replace('#', ''); return '#' + (c.length === 8 ? c.slice(0, 6) : c); } const o = new Option().style; o.color = c; return o.color ? c.toLowerCase() : null; }
+function saveToi() { if (!store.set('toi', toiFiles.map(({ id, name, on, color, tags: t }) => ({ id, name, on, color, tags: t }))) && !saveToi.warned) { saveToi.warned = true; toast('标签关注文件过大，浏览器无法保存'); } }
 function renderToi() {
   const cnt = toiFiles.filter(f => f.on).reduce((a, f) => a + f.map.size, 0);
   $('#toiBadge').hidden = !cnt; $('#toiBadge').textContent = cnt;
@@ -552,7 +567,7 @@ function sysPaint() {
   $('#sys-factory').title = c.factory ? '' : 'Impinj IoT 接口不提供恢复出厂设置，请在读写器网页中操作或长按复位键';
   $('#sys-mhint').textContent = !c.reboot ? '该数据源不支持远程重启。' : d.via === 'sim' ? '模拟器重启约 5 秒，期间所有操作返回 503。' : '重启约需 1–2 分钟，期间读写器不可用；完成后 TagScope 会自动重新连接。';
   const g = d.gpo || [];
-  $('#sys-gpo').innerHTML = g.length ? g.map(x => `<button data-port="${x.port}" class="${x.state ? 'on' : ''}" aria-pressed="${x.state}" ${c.gpo ? '' : 'disabled'}>GPO ${x.port} · ${x.state ? 'HIGH' : 'LOW'}</button>`).join('') : '<span class="hint">该数据源没有可控制的 GPO。</span>';
+  $('#sys-gpo').innerHTML = g.length ? g.map(x => `<button data-port="${esc(x.port)}" class="${x.state ? 'on' : ''}" aria-pressed="${x.state}" ${c.gpo ? '' : 'disabled'}>GPO ${esc(x.port)} · ${x.state ? 'HIGH' : 'LOW'}</button>`).join('') : '<span class="hint">该数据源没有可控制的 GPO。</span>';
   if (run) sysMsg('正在盘点：修改设置或重启前请先停止盘点');
 }
 async function sysDo(op, x, okMsg) {

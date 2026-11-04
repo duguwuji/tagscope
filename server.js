@@ -110,7 +110,7 @@ async function doSystem(b) {
   if (op !== 'info' && (x.running || x.status === 'unknown')) throw new Error('请先确认盘点已停止');
   if (x.driver.system) r = await x.driver.system(op, b);
   else { // LLRP: Impinj R700 still exposes the IoT Device Interface /system endpoints over HTTPS
-    x.rest ||= RestDriver.client({ host: x.driver.host, port: b.restPort, user: b.user ?? x.connection?.user, pass: b.pass ?? x.connection?.pass });
+    x.rest ||= RestDriver.client({ host: x.driver.host, port: b.restPort, user: b.user ?? x.connection?.user, pass: b.pass ?? x.connection?.pass, insecure: x.connection?.insecure });
     try { r = await x.rest.system(op, b); }
     catch (e) {
       if (op !== 'info') throw new Error(`无法通过 Impinj IoT 接口执行：${e.message}`); const i = x.info || {};
@@ -162,12 +162,23 @@ const server = http.createServer(async (req, res) => {
     if (!security.authorized(req)) return json(res, 401, { error: '请填写启动窗口中的桥接配对码' });
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    const bootstrap = security.localPage(req) ? `<script>window.TAGSCOPE_BRIDGE_TOKEN=${JSON.stringify(security.token).replace(/</g, '\\u003c')};</script>` : '';
-    return res.end(fs.readFileSync(INDEX, 'utf8').replace('<script src="tagdb.js', bootstrap + '\n<script src="tagdb.js'));
+    let html;
+    try { html = fs.readFileSync(INDEX, 'utf8'); }
+    catch (e) { return json(res, 500, { error: '无法读取界面文件：' + e.message }); }
+    const nonce = crypto.randomBytes(16).toString('base64');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
+      'Content-Security-Policy': `script-src 'self' 'nonce-${nonce}'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` });
+    const bootstrap = security.localPage(req) ? `<script nonce="${nonce}">window.TAGSCOPE_BRIDGE_TOKEN=${JSON.stringify(security.token).replace(/</g, '\\u003c')};</script>` : '';
+    return res.end(html.replace('<script src="tagdb.js', bootstrap + '\n<script src="tagdb.js'));
   }
   if (url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
-  if (req.method === 'GET' && STATIC[url.pathname]) { res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' }); return fs.createReadStream(path.join(__dirname, 'public', STATIC[url.pathname])).pipe(res); }
+  if (req.method === 'GET' && STATIC[url.pathname]) {
+    const s = fs.createReadStream(path.join(__dirname, 'public', STATIC[url.pathname]));
+    s.once('open', () => { res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' }); s.pipe(res); });
+    s.once('error', () => { if (!res.headersSent) res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(); });
+    res.once('close', () => s.destroy());
+    return;
+  }
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write(`event: hello\ndata: ${JSON.stringify(state())}\n\n`); clients.add(res);
@@ -186,6 +197,13 @@ const server = http.createServer(async (req, res) => {
 });
 if (require.main === module) {
   server.listen(PORT, HOST, () => { console.log(`TagScope ${VERSION}  © 2026 Hill · Hill@iotrfid.top`); console.log(`TagScope 已启动： http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`); console.log(`桥接配对码（在线页或其他电脑连接时填写）：${security.token}`); console.log('网页版：https://tagscope.iotrfid.top （连接真实读写器时保持本窗口运行）'); });
-  process.on('SIGINT', async () => { await Promise.all([...sources.keys()].map(id => enqueue(id, () => doDisconnect(id)).catch(() => {}))); process.exit(0); });
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return; shuttingDown = true;
+    clearInterval(ticker);
+    await Promise.all([...sources.keys()].map(id => enqueue(id, () => doDisconnect(id)).catch(() => {})));
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
 }
 module.exports = { server, sources, clients, routes, enqueue, security, doConnect, doStart, doStop, doDisconnect, state, onTag, flush, ticker };

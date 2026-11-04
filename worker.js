@@ -11,6 +11,9 @@ import validation from './public/validation.js';
 import runBuffer from './public/run-buffer.js';
 
 const SEC = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' };
+// Hash of the inline cloud flag injected below. Recompute if that snippet changes:
+//   printf '%s' 'window.TAGSCOPE_CLOUD=1;' | openssl dgst -sha256 -binary | base64
+const HTML_CSP = "script-src 'self' 'sha256-BmggIMcbs7c1DiJI6eKWVXb1mfidIjNRKFlkKccoJM4='; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 const JS = { '/app.js': app, '/sim.js': sim, '/tagdb.js': tagdb, '/views.js': views, '/i18n.js': i18n, '/validation.js': validation, '/run-buffer.js': runBuffer };
 // Content hash per script so browsers fetch new JS after every deploy (scripts are cached for a day).
 const hash = s => { let x = 2166136261; for (let i = 0; i < s.length; i++) x = Math.imul(x ^ s.charCodeAt(i), 16777619); return (x >>> 0).toString(36); };
@@ -22,7 +25,7 @@ export default {
     const { pathname } = new URL(request.url);
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405, headers: SEC });
     if (pathname === '/' || pathname === '/index.html')
-      return new Response(page, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', ...SEC } });
+      return new Response(page, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'Content-Security-Policy': HTML_CSP, ...SEC } });
     if (JS[pathname])
       return new Response(JS[pathname], { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400', ...SEC } });
     if (pathname === '/favicon.ico') return new Response(null, { status: 204, headers: SEC });
