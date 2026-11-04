@@ -150,6 +150,8 @@ node server.js --port=8080 --host=127.0.0.1 --verbose --allow-origin=https://exa
 | 使用 TLS / 允许自签名证书 | REST：R700 默认使用 HTTPS 和自签名证书，一般两项都勾选 |
 | 覆盖默认凭据 | REST：默认账号 root / impinj；修改过密码时勾选并填写 |
 
+凭据只保存在当前浏览器会话（sessionStorage），关闭浏览器后需重新填写，不会写入 localStorage。
+
 点击“添加数据源”后，新数据源会出现在左侧列表，并自动启用和连接。
 
 ### 4.2 数据源列表

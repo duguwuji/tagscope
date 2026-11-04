@@ -24,11 +24,16 @@
   }
   class Receiver {
     constructor(deliver) { this.deliver = deliver; this.runs = new Map(); }
-    begin(id, runId) { this.runs.set(id, { runId, seq: 0, pending: new Map() }); }
+    begin(id, runId) { this.runs.set(id, { runId, seq: 0, pending: new Map(), broken: false }); }
     seq(id) { return this.runs.get(id)?.seq || 0; }
     accept(b) {
-      const r = this.runs.get(b.id); if (!r || r.runId !== b.runId || !Number.isInteger(b.seq) || b.seq <= r.seq) return;
-      if (r.pending.size > 64) throw incomplete('标签数据流缺失，当前结果不完整');
+      const r = this.runs.get(b.id); if (!r || r.runId !== b.runId || r.broken || !Number.isInteger(b.seq) || b.seq <= r.seq) return;
+      if (r.pending.size > 64) {
+        // A gap this large cannot be repaired. Drop the buffered tail and fail once,
+        // instead of keeping the receiver poisoned for the rest of the run.
+        r.pending.clear(); r.broken = true;
+        throw incomplete('标签数据流缺失，当前结果不完整');
+      }
       r.pending.set(b.seq, b);
       while (r.pending.has(r.seq + 1)) { const next = r.pending.get(r.seq + 1); r.pending.delete(++r.seq); this.deliver(next); }
     }
@@ -38,7 +43,7 @@
       for (const b of result.batches || []) this.accept(b);
       // SSE may have delivered older batches after the stop request captured afterSeq.
       // Only the contiguous received sequence determines completeness.
-      if (r.seq !== result.finalSeq) throw incomplete('标签数据流缺失，当前结果不完整，请重新运行');
+      if (r.broken || r.seq !== result.finalSeq) throw incomplete('标签数据流缺失，当前结果不完整，请重新运行');
     }
   }
   return { RunBuffer, Receiver };

@@ -105,6 +105,15 @@ test('F06: missing replay fails explicitly; already received batches tolerate tr
   const result = b.since(0); assert.equal(result.complete, false); r.finish('s', result); assert.equal(seen.length, 70);
   const missing = new Receiver(() => {}); missing.begin('s', 'run'); assert.throws(() => missing.finish('s', result), { code: 'INCOMPLETE_DATA' });
 });
+test('F06: an unrecoverable gap fails once and stops buffering instead of poisoning the run', () => {
+  const seen = [], r = new Receiver(b => seen.push(b)); r.begin('s', 'run');
+  r.accept({ id: 's', runId: 'run', seq: 1, reads: [], total: 0 });
+  assert.throws(() => { for (let i = 3; i <= 68; i++) r.accept({ id: 's', runId: 'run', seq: i, reads: [], total: 0 }); }, { code: 'INCOMPLETE_DATA' });
+  assert.doesNotThrow(() => r.accept({ id: 's', runId: 'run', seq: 69, reads: [], total: 0 }));
+  assert.equal(seen.length, 1);
+  assert.throws(() => r.finish('s', { runId: 'run', finalSeq: 69, batches: [] }), { code: 'INCOMPLETE_DATA' });
+  r.begin('s', 'next'); assert.equal(r.seq('s'), 0);
+});
 test('F07: memory UI submits kill password and access password independently', async () => {
   const elements = { '#tm-src': { value: 's' }, '#tm-epc': { value: 'AAAA' }, '#tm-tid': { value: '' }, '#tm-rtid': { checked: false }, '#tm-pwd': { value: '00000000' }, '#tm-clock': {} }, sent = [];
   const c = vm.createContext({ $: s => elements[s], srcById: () => ({ id: 's' }), clean: s => s, tmStatus() {}, tmLock() {}, tmWords() {}, clockStr: String, nameOf: () => 'sim', performance, setInterval, clearInterval, TagScopeValidation: V, wire: () => cfg, toast() {}, backendOf: () => ({ api: async (p, b) => { sent.push(b); return { ok: true }; } }) });
@@ -141,7 +150,10 @@ test('F08: HTTP and SSE reject missing auth; authenticated operations and CORS w
   const preflight = await request('/api/stop', { method: 'OPTIONS', headers: { origin: 'https://tagscope.iotrfid.top' } }); assert.equal(preflight.status, 204); assert.match(preflight.headers['access-control-allow-headers'], /Authorization/);
   assert.equal((await request('/api/stop', { method: 'POST', headers: auth })).status, 415);
   const sse = await request('/api/events', { headers: auth }); assert.equal(sse.status, 200); assert.match(sse.parts[0], /sequenced-batches/); sse.emit('close');
-  const lan = await request('/'); assert(!lan.text.includes('window.TAGSCOPE_BRIDGE_TOKEN=')); const local = await request('/', { remoteAddress: '127.0.0.1' }); assert(local.text.includes('window.TAGSCOPE_BRIDGE_TOKEN='));
+  const lan = await request('/'); assert(!lan.text.includes('window.TAGSCOPE_BRIDGE_TOKEN=')); assert.match(lan.headers['content-security-policy'], /script-src 'self' 'nonce-/);
+  const local = await request('/', { remoteAddress: '127.0.0.1' }); assert(local.text.includes('window.TAGSCOPE_BRIDGE_TOKEN='));
+  const nonce = local.headers['content-security-policy'].match(/'nonce-([^']+)'/)[1];
+  assert(local.text.includes(`<script nonce="${nonce}">window.TAGSCOPE_BRIDGE_TOKEN=`));
 });
 test('bridge simulator HTTP start/stop seals final batch with matching run ID', async () => {
   const headers = { authorization: 'Bearer ' + bridge.security.token, 'content-type': 'application/json' };
@@ -184,7 +196,11 @@ test('Worker text assets and HTML reference all new scripts with content hashes'
   const path = require('node:path'); let worker = fs.readFileSync(require.resolve('../worker.js'), 'utf8');
   worker = worker.replace(/^import (\w+) from '([^']+)';.*$/gm, (_, name, file) => `const ${name} = ${JSON.stringify(fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8'))};`).replace('export default {', 'globalThis.worker = {');
   const c = vm.createContext({ URL, Response }); vm.runInContext(worker, c);
-  const page = await (await c.worker.fetch({ url: 'https://example.com/', method: 'GET' })).text(); assert(page.includes('window.TAGSCOPE_CLOUD=1'));
+  const pageRes = await c.worker.fetch({ url: 'https://example.com/', method: 'GET' });
+  const page = await pageRes.text(); assert(page.includes('window.TAGSCOPE_CLOUD=1')); assert.match(pageRes.headers.get('content-security-policy'), /sha256-/);
+  const inline = page.match(/<script>([^<]+)<\/script>/)[1];
+  const digest = require('node:crypto').createHash('sha256').update(inline).digest('base64');
+  assert(pageRes.headers.get('content-security-policy').includes(`'sha256-${digest}'`), 'CSP hash must match the inline cloud flag');
   for (const match of page.matchAll(/src="([\w-]+\.js)\?v=([^"<]+)"/g)) { assert.notEqual(match[2], '2.0.1'); const res = await c.worker.fetch({ url: 'https://example.com/' + match[1], method: 'GET' }); assert.equal(res.status, 200); assert.match(res.headers.get('content-type'), /javascript/); assert((await res.text()).length > 100); }
   assert.equal((await c.worker.fetch({ url: 'https://example.com/api/start', method: 'POST' })).status, 405);
 });
@@ -193,7 +209,56 @@ test('lost ADD acknowledgement plus failed deletion reports cleanup as unconfirm
   d.call = async type => { d.commands.push(type); throw Error('connection lost'); };
   const r = await d.accessOp(write); assert.equal(r.ok, false); assert.equal(r.cleanupOk, false); assert(fault); assert(!d.commands.includes(MSG.ENABLE_ACCESSSPEC));
 });
+test('REST filters map both match and miss actions to include/exclude', () => {
+  const d = new RestDriver();
+  const base = { antennas: [{ id: 1, enabled: true, txDbm: 30 }], mode: 2, session: 1, searchMode: 2, tagPopulation: 32 };
+  const action = (match, miss) => d.buildPreset({ ...base, filters: [{ mask: 'E280', bank: 'epc', pointer: 32, bits: 16, match, miss }] }).antennaConfigs[0].filtering.filters[0].action;
+  assert.equal(action('select', 'unselect'), 'include');
+  assert.equal(action('unselect', 'nothing'), 'exclude');
+  assert.equal(action('nothing', 'select'), 'exclude');
+  assert.equal(action('nothing', 'unselect'), 'include');
+  assert.equal(d.buildPreset({ ...base, filters: [{ mask: 'E280', bank: 'epc', pointer: 32, bits: 16, match: 'nothing', miss: 'nothing' }] }).antennaConfigs[0].filtering, undefined);
+});
+test('simulator treats permaunlock as writable and lock as protected', async () => {
+  const Sim = require('../public/sim'); const sim = new Sim(); sim.connect({ simTags: 1 });
+  const t = sim.tags[0]; t.reserved = '00000000' + '12345678'; t.locks.user = 'permaunlock';
+  const ok = await sim.accessOp({ op: 'write', targetEpc: t.epc, bank: 'user', wordPointer: 0, data: '1234', password: '00000000', timeout: 1 });
+  assert.equal(ok.ok, true);
+  t.locks.user = 'lock';
+  const blocked = await sim.accessOp({ op: 'write', targetEpc: t.epc, bank: 'user', wordPointer: 0, data: '5678', password: '00000000', timeout: 1 });
+  assert.equal(blocked.ok, false);
+});
 test('REST connect cannot silently ignore failure to stop an already running reader', async () => {
   const d = new RestDriver(); d._req = async (method, path) => { if (path === '/status') return { status: 'running' }; if (path === '/profiles/stop') throw Error('stop refused'); return {}; };
   await assert.rejects(d.connect({ host: 'mock' }), /stop refused/);
+});
+test('stopAll reports a changed run even when another source is merely incomplete', async () => {
+  const run = { activeRuns: { a: 'ra', b: 'rb' }, incomplete: false };
+  const c = vm.createContext({ run, backendOf: s => ({ api: async () => { const e = Error(s.id === 'a' ? '运行已改变，请刷新状态后再停止' : '标签数据流缺失'); e.code = s.id === 'a' ? 'RUN_CHANGED' : 'INCOMPLETE_DATA'; throw e; } }), applySrcState() {}, addLog() {}, toast() {} });
+  vm.runInContext(cut(views, 'async function stopAll(', 'async function wait('), c);
+  await assert.rejects(c.stopAll([{ id: 'a' }, { id: 'b' }]), e => e.runChanged === true);
+  assert.equal(run.incomplete, true);
+  const onlyIncomplete = vm.createContext({ run: { activeRuns: {}, incomplete: false }, backendOf: () => ({ api: async () => { const e = Error('标签数据流缺失'); e.code = 'INCOMPLETE_DATA'; throw e; } }), applySrcState() {}, addLog() {}, toast() {} });
+  vm.runInContext(cut(views, 'async function stopAll(', 'async function wait('), onlyIncomplete);
+  await assert.doesNotReject(onlyIncomplete.stopAll([{ id: 'a' }]));
+});
+test('plaintext reader credentials migrate to sessionStorage and the v1 record is removed', () => {
+  const load = (stored, legacy) => {
+    const ls = new Map(), ss = new Map();
+    if (stored) ls.set('tagscope.sources', JSON.stringify(stored));
+    if (legacy) ls.set('tagscope.source', JSON.stringify(legacy));
+    const localStorage = { getItem: k => ls.has(k) ? ls.get(k) : null, setItem: (k, v) => ls.set(k, String(v)), removeItem: k => ls.delete(k) };
+    const sessionStorage = { getItem: k => ss.has(k) ? ss.get(k) : null, setItem: (k, v) => ss.set(k, String(v)), removeItem: k => ss.delete(k) };
+    const c = vm.createContext({ window: {}, location: { protocol: 'http:' }, localStorage, sessionStorage, uid: () => 'id1', setTimeout, clearTimeout });
+    vm.runInContext(cut(app, 'const store =', 'let view ='), c);
+    return { ls, ss };
+  };
+  const v1 = load(null, { host: '10.0.0.9', driver: 'llrp', user: 'root', pass: 'impinj' });
+  assert.equal(v1.ls.has('tagscope.source'), false);
+  const persisted = JSON.parse(v1.ls.get('tagscope.sources'))[0];
+  assert.equal(persisted.user, undefined); assert.equal(persisted.pass, undefined);
+  assert.deepEqual(JSON.parse(v1.ss.get('tagscope.cred.id1')), { user: 'root', pass: 'impinj' });
+  const v2 = load([{ id: 's1', host: 'r', iface: 'rest', cred: true, user: 'root', pass: 'impinj', presets: {}, active: 'default' }], null);
+  assert.equal(JSON.parse(v2.ls.get('tagscope.sources'))[0].pass, undefined);
+  assert.deepEqual(JSON.parse(v2.ss.get('tagscope.cred.s1')), { user: 'root', pass: 'impinj' });
 });

@@ -8,12 +8,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const fix = (v, d = 3) => v == null || v === '' || isNaN(v) ? '' : Number(v).toFixed(d);
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 5000); }
-const store = { get(k, d) { try { const v = localStorage.getItem('tagscope.' + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem('tagscope.' + k, JSON.stringify(v)); } catch (_) { } } };
+const store = { get(k, d) { try { const v = localStorage.getItem('tagscope.' + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem('tagscope.' + k, JSON.stringify(v)); return true; } catch (_) { return false; } }, del(k) { try { localStorage.removeItem('tagscope.' + k); return true; } catch (_) { return false; } } };
 const CLOUD = !!window.TAGSCOPE_CLOUD || location.protocol === 'file:';
 const normUrl = u => { u = String(u || '').trim().replace(/\/+$/, ''); if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u; return u; };
 let bridgeUrl = normUrl(store.get('bridge', '')) || 'http://localhost:8080';
 function bridgeToken(base) { if (!base && window.TAGSCOPE_BRIDGE_TOKEN) return window.TAGSCOPE_BRIDGE_TOKEN; try { return sessionStorage.getItem('tagscope.token.' + (base || location.origin)) || ''; } catch (_) { return ''; } }
-function setBridgeToken(base, value) { try { sessionStorage.setItem('tagscope.token.' + (base || location.origin), value); } catch (_) {} const b = backends.get(base); if (b) { b.token = value; b.authAsked = false; } }
+function setBridgeToken(base, value) { try { sessionStorage.setItem('tagscope.token.' + (base || location.origin), value); } catch (_) {} const b = backends.get(base); if (b) { b.token = value; b.authAsked = false; b.authAt = 0; } }
 const hex2b64 = h => { h = clean(h); if (!h) return ''; let s = ''; for (let i = 0; i + 1 < h.length; i += 2) s += String.fromCharCode(parseInt(h.substr(i, 2), 16)); return btoa(s); };
 function dl(name, text, type = 'text/csv') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([type === 'text/csv' ? '\ufeff' + text : text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 const stamp = (d = new Date()) => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
@@ -30,13 +30,14 @@ function addrSpace(base) { try { const h = new URL(base).hostname.replace(/^\[|\
 async function xfetch(url, opt, space) { if (space && location.protocol === 'https:') { try { return await fetch(url, { ...opt, targetAddressSpace: space }); } catch (e) { if (!/targetAddressSpace|enum/i.test(e.message)) throw e; } } return fetch(url, opt); }
 const backends = new Map();
 function makeBridge(base) {
-  const me = { kind: 'bridge', base, online: null, version: null, closed: false, ctl: null, token: bridgeToken(base), authAsked: false, pairing: null }, space = CLOUD ? addrSpace(base) : null;
+  const me = { kind: 'bridge', base, online: null, version: null, closed: false, ctl: null, token: bridgeToken(base), authAsked: false, authAt: 0, pairing: null }, space = CLOUD ? addrSpace(base) : null;
   me.receiver = new TagScopeRunBuffer.Receiver(b => handlers.tags && handlers.tags(b, me));
   async function pair() {
     if (me.pairing) return me.pairing;
-    if (me.authAsked) return false;
-    me.authAsked = true;
-    me.pairing = pairingQueue.then(async () => { const token = await ask('连接桥接服务', `桥接配对码（${base || location.origin}）:`, '', v => /^[^\s]{24,256}$/.test(v) ? '' : '请填写启动窗口中的配对码'); if (!token) return false; me.token = token; setBridgeToken(base, token); me.authAsked = true; return true; });
+    // 取消后不要永久静默：30 秒后允许再次提示，同时避免重连时连续弹窗。
+    if (me.authAt && Date.now() - me.authAt < 30000) return false;
+    me.authAt = Date.now();
+    me.pairing = pairingQueue.then(async () => { const token = await ask('连接桥接服务', `桥接配对码（${base || location.origin}）:`, '', v => /^[^\s]{24,256}$/.test(v) ? '' : '请填写启动窗口中的配对码'); if (!token) { me.authAsked = false; return false; } me.token = token; setBridgeToken(base, token); me.authAsked = true; me.authAt = 0; return true; });
     pairingQueue = me.pairing.catch(() => false);
     try { return await me.pairing; } finally { me.pairing = null; }
   }
@@ -61,8 +62,14 @@ function makeBridge(base) {
         while ((i = buf.indexOf('\n\n')) >= 0) { const blk = buf.slice(0, i); buf = buf.slice(i + 2); let ev = 'message', data = '';
           for (const ln of blk.split('\n')) { if (ln.startsWith('event:')) ev = ln.slice(6).trim(); else if (ln.startsWith('data:')) data += ln.slice(5).trim(); }
           if (!data || !handlers[ev]) continue; const d = JSON.parse(data); if (ev === 'hello') { me.version = d.version || '1.x'; if (!d.features?.includes('sequenced-batches')) throw new Error('桥接版本过旧，请升级'); setOnline(me, true); }
-          if (ev === 'tags') me.receiver.accept(d); else handlers[ev](d, me); } } }
-    catch (e) { if (me.closed) return; }
+          if (ev === 'tags') {
+            try { me.receiver.accept(d); }
+            catch (err) {
+              if (err.code !== 'INCOMPLETE_DATA') throw err;
+              if (handlers.dataError) handlers.dataError(err, me); else toast(err.message);
+            }
+          } else handlers[ev](d, me); } } }
+    catch (e) { if (me.closed) return; console.warn('TagScope bridge stream:', e.message); }
     me.ctl.abort();
     setOnline(me, false); await sleep(3000); } };
   me.close = () => { me.closed = true; me.ctl && me.ctl.abort(); };
@@ -118,17 +125,31 @@ function renderBridgeTxt() { const b = [...backends.values()].find(x => x.kind =
 /* =====================================================================
    Data sources
    ===================================================================== */
-let sources = store.get('sources', null);
+const credKey = id => 'tagscope.cred.' + id;
+function loadCred(s) { if (!s.cred) return s; try { const c = JSON.parse(sessionStorage.getItem(credKey(s.id)) || 'null'); return c ? { ...s, user: c.user || '', pass: c.pass || '' } : s; } catch (_) { return s; } }
+function saveCred(s) { try { if (s.cred) sessionStorage.setItem(credKey(s.id), JSON.stringify({ user: s.user || '', pass: s.pass || '' })); else sessionStorage.removeItem(credKey(s.id)); } catch (_) { } }
+const stored = store.get('sources', null), legacy = store.get('source', null);
+let sources = Array.isArray(stored) ? stored : null;
 if (!sources) { // migrate v1 single source
-  const old = store.get('source', null); sources = [];
-  if (old && old.host !== undefined) sources.push({ id: uid(), host: old.host || (old.driver === 'sim' ? 'simulator' : ''), nick: old.nick || '', iface: old.driver || 'llrp', port: old.port || '', tls: !!old.tls, ins: old.insecure !== false, cred: !!old.user, user: old.user || '', pass: old.pass || '', simTags: old.simTags || 40, enabled: false, presets: {}, active: 'default' });
+  sources = [];
+  if (legacy && legacy.host !== undefined) sources.push({ id: uid(), host: legacy.host || (legacy.driver === 'sim' ? 'simulator' : ''), nick: legacy.nick || '', iface: legacy.driver || 'llrp', port: legacy.port || '', tls: !!legacy.tls, ins: legacy.insecure !== false, cred: !!legacy.user, user: legacy.user || '', pass: legacy.pass || '', simTags: legacy.simTags || 40, enabled: false, presets: {}, active: 'default' });
 }
+// Reader credentials are session-scoped, never persisted to localStorage.
+sources = sources.map(loadCred);
+// Move any plaintext credentials out of localStorage, then drop the obsolete v1 record.
+if (legacy || (Array.isArray(stored) && stored.some(s => s && (s.user || s.pass)))) { if (saveSources()) store.del('source'); }
 const runtime = {};
 const rt = id => runtime[id] || (runtime[id] = { connected: false, running: false, info: null, err: '', connecting: false });
 const srcById = id => sources.find(s => s.id === id);
 const nameOf = s => s ? (s.nick || s.host || '模拟读写器') : '';
 const infoOf = s => rt(s.id).info || s.lastInfo || null;
-function saveSources() { store.set('sources', sources); }
+function saveSources() {
+  sources.forEach(saveCred);
+  const persisted = sources.map(({ user, pass, ...s }) => s);
+  if (store.set('sources', persisted)) return true;
+  if (!saveSources.warned) { saveSources.warned = true; toast('浏览器存储已满，数据源设置无法保存'); }
+  return false;
+}
 let view = 'inventory', cfgSrc = null;
 
 function renderSources() {
@@ -203,7 +224,7 @@ async function deleteSource(s) {
   if (run?.parts.includes(s.id)) return toast('请先停止盘点，再删除数据源');
   if (!confirm(`删除数据源“${nameOf(s)}”？其预设也会一并删除。`)) return;
   try { await disconnectSource(s); } catch (e) { toast('断开未确认，数据源已保留：' + e.message); return; }
-  sources = sources.filter(x => x !== s); delete runtime[s.id]; saveSources();
+  sources = sources.filter(x => x !== s); delete runtime[s.id]; try { sessionStorage.removeItem(credKey(s.id)); } catch (_) { } saveSources();
   if (cfgSrc === s.id) show('inventory'); renderSources(); renderOffline(); refreshParticipants();
 }
 

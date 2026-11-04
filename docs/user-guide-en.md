@@ -152,6 +152,8 @@ Click ⊕ next to **Data Sources (数据源)** and fill in:
 | Use TLS / Allow self-signed certificate | REST: the R700 uses HTTPS with a self-signed certificate by default, so usually tick both |
 | Override default credentials (覆盖默认凭据) | REST: the default account is root / impinj; tick and fill in if the password has been changed |
 
+Credentials are kept only for the current browser session (sessionStorage); they are not written to localStorage and must be re-entered after the browser closes.
+
 Click **Add data source (添加数据源)**. The new source appears in the sidebar and is enabled and connected automatically.
 
 ### 4.2 Source list
