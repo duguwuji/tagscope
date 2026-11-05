@@ -2,6 +2,7 @@
 // Cloudflare Worker: serves the TagScope web UI. Reader traffic never goes through Cloudflare —
 // the page talks to the in-browser simulator or to the local bridge (node server.js).
 import html from './public/index.html';
+import pkg from './package.json'; // JSON module: package.json is the single version source
 import app from './public/app.js'; // bundled as text (see wrangler.toml rules)
 import sim from './public/sim.js';
 import tagdb from './public/tagdb.js';
@@ -10,6 +11,7 @@ import i18n from './public/i18n.js';
 import validation from './public/validation.js';
 import runBuffer from './public/run-buffer.js';
 
+const VERSION = pkg.version;
 const SEC = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' };
 // Hash of the inline cloud flag injected below. Recompute if that snippet changes:
 //   printf '%s' 'window.TAGSCOPE_CLOUD=1;' | openssl dgst -sha256 -binary | base64
@@ -17,8 +19,9 @@ const HTML_CSP = "script-src 'self' 'sha256-BmggIMcbs7c1DiJI6eKWVXb1mfidIjNRKFlk
 const JS = { '/app.js': app, '/sim.js': sim, '/tagdb.js': tagdb, '/views.js': views, '/i18n.js': i18n, '/validation.js': validation, '/run-buffer.js': runBuffer };
 // Content hash per script so browsers fetch new JS after every deploy (scripts are cached for a day).
 const hash = s => { let x = 2166136261; for (let i = 0; i < s.length; i++) x = Math.imul(x ^ s.charCodeAt(i), 16777619); return (x >>> 0).toString(36); };
-const page = html.replace('<script src="tagdb.js', '<script>window.TAGSCOPE_CLOUD=1;</script>\n<script src="tagdb.js')
-  .replace(/src="([\w-]+\.js)\?v=[^"]*"/g, (m, f) => JS['/' + f] ? `src="${f}?v=${hash(JS['/' + f])}"` : m);
+const page = html.replace('content="__TAGSCOPE_VERSION__"', `content="${VERSION}"`)
+  .replace('<script src="tagdb.js', '<script>window.TAGSCOPE_CLOUD=1;</script>\n<script src="tagdb.js')
+  .replace(/src="([\w-]+\.js)(?:\?v=[^"]*)?"/g, (m, f) => JS['/' + f] ? `src="${f}?v=${hash(JS['/' + f])}"` : m);
 
 export default {
   async fetch(request) {

@@ -19,6 +19,10 @@ git push -u origin feature/reader-status
 
 这些命令需要在从 GitHub 克隆的仓库中运行；下载解压的源码目录不含 Git 历史。
 
+`npm test` 现在先运行 `npm run check`（全部 JavaScript 文件的语法检查，含 Worker 的 ES module 检查），再运行回归测试和模拟 LLRP 端到端测试。GitHub Actions（`.github/workflows/ci.yml`）会在 push 到 `main` 和所有 Pull Request 上，用 Node 18、20、22 分别执行同一命令；Cloudflare 构建命令也可以继续使用 `npm test`。
+
+版本号只在 `package.json` 中修改。`server.js` 和 `worker.js` 读取它并注入页面的 `tagscope-version` meta；前端、HTML 脚本标签和 Worker 缓存参数都不再写死版本号。发版时只改 `package.json` 的 `version` 字段即可。
+
 ## 预览与审查
 
 Cloudflare Workers Builds 对功能分支运行 `npm test` 和预览部署。通过 Cloudflare 的 tagscope → 部署或 Pull Request 中的构建信息找到对应分支和提交的预览地址；预览链接可被持有链接的人访问，勿放入真实凭据或敏感数据。

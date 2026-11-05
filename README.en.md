@@ -52,8 +52,22 @@ Common options: `node server.js --port=8080 --host=0.0.0.0 --verbose`
 | Driver | Devices | Notes |
 |---|---|---|
 | LLRP | Speedway R120/R220/R420, xPortal, xArray/xSpan, and R700/R660 switched to LLRP mode | Most complete: inventory and all tag operations |
-| R700 REST | R700/R660 running the IoT Device Interface | Inventory only. Default account root/impinj; self-signed certificates accepted |
+| R700 REST | R700/R660 running the IoT Device Interface | **Inventory and System page only**. Default account root/impinj; self-signed certificates accepted |
 | Simulator | No hardware needed | All data is simulated; the model is shown as "Simulated reader (not a real device)" |
+
+Capability matrix ("—" means the interface does not provide it):
+
+| Capability | LLRP | R700 REST | Simulator |
+|---|---|---|---|
+| Inventory / run scenarios | ✅ | ✅ | ✅ |
+| Tag read / write / block write / change EPC | ✅ | — | ✅ |
+| Lock / kill | ✅ | — | ✅ |
+| Gen2 filters, Fast ID, low duty cycle | ✅ | Filters, Fast ID | ✅ |
+| GPI trigger | ✅ | — | ✅ |
+| GPO control | ✅ | ✅ | ✅ |
+| System info / hostname / region / reboot | ✅ (R700 via the IoT interface) | ✅ | ✅ (including factory reset) |
+
+The Tag Memory page lists only data sources that support tag access; with a REST source it explicitly says "inventory only".
 
 ## Features (compared with the ItemTest 2.14.1 user guide)
 
@@ -75,7 +89,7 @@ Version 2.0 follows the ItemTest 2.14.1 layout: the sidebar holds Displays / Dat
 - A reader accepts only one LLRP client at a time. Close ItemTest, MultiReader and other software before connecting.
 - On connect, the reader's LLRP configuration is reset to defaults, as ItemTest does.
 - Kill and permalock cannot be undone. The UI asks for confirmation first.
-- This version of the REST driver implements inventory only; use LLRP for tag read/write, lock and kill.
+- The REST driver implements inventory and the System page only; use LLRP for tag read/write, lock and kill (both the UI and the API reject tag operations on REST sources).
 - The 2.0.1 web app requires bridge 2.0.1 or later (pairing authentication and sequenced batches). Download the bridge again if yours is older.
 - Receive sensitivity in dBm is converted from the Impinj capability table: index 1 means maximum sensitivity and is shown as −80 dBm.
 
@@ -96,7 +110,11 @@ lib/driver-llrp.js     LLRP driver
 lib/driver-rest.js     R700 IoT Device Interface driver
 lib/driver-sim.js      Simulator
 test/                  Mock LLRP reader and end-to-end tests (npm test)
+scripts/check-syntax.js Syntax check for every JavaScript file (npm run check)
+.github/workflows/     GitHub Actions CI (npm test on Node 18/20/22)
 ```
+
+`package.json` is the single version source: `server.js` and `worker.js` read it and inject the `tagscope-version` meta tag, so the frontend no longer hardcodes a version.
 
 ## Copyright
 

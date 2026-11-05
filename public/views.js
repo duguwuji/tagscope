@@ -21,8 +21,15 @@ let colOn = { ...Object.fromEntries(COLS.map(c => [c.k, !!c.d])), ...store.get('
 let colOrder = store.get('colOrder', COLS.map(c => c.k)); for (const c of COLS) if (!colOrder.includes(c.k)) colOrder.push(c.k); colOrder = colOrder.filter(k => CK[k]);
 let fmtMode = { epc: 'hex', tid: 'hex', other: 'hex', ...store.get('fmt', {}) };
 let sort = { key: 'idx', dir: 1 }, selected = null;
-let tags = new Map(), srcStats = {}, totalReads = 0, order = 0, plotPts = [], readLog = [], rateBuf = [];
+let tags = new Map(), tagList = [], srcStats = {}, totalReads = 0, order = 0, plotPts = [], readLog = [], rateBuf = [];
 let run = null, lastRun = null, clockMs = 0;
+// Bound memory for very large inventories. Existing tags keep updating; new EPCs are
+// dropped after the cap and reported in the footer/log instead of silently growing forever.
+const MAX_TAGS = 200000, MAX_ROWS = 3000;
+let hasTid = false, tagsTruncated = false, droppedTags = 0;
+// Incremental list rendering: one <tr> per EPC, patched in place instead of rebuilding the table.
+let rowCache = new Map(), listSig = '', listNotice = null, lastFullOrder = 0;
+let sortRows = null, sortKey = '', sortDir = 0, sortAt = 0;
 
 function participants() { return sources.filter(s => s.enabled && rt(s.id).connected && rt(s.id).status !== 'unknown'); }
 function refreshParticipants() { $('#inv-play').disabled = !run && !participants().length; renderBlank(); }
@@ -34,7 +41,12 @@ function scenText() {
   return '连续 - 永久运行' + (r && r.phase === 'reset' ? '（重置为 A 状态）' : '');
 }
 let logTruncated = false, runLogTruncated = false;
-function clearData() { tags = new Map(); srcStats = {}; totalReads = 0; order = 0; plotPts = []; readLog = []; rateBuf = []; selected = null; logTruncated = false; runLogTruncated = false; }
+function clearData() {
+  tags = new Map(); tagList = []; srcStats = {}; totalReads = 0; order = 0; plotPts = []; readLog = []; rateBuf = []; selected = null;
+  logTruncated = false; runLogTruncated = false; hasTid = false; tagsTruncated = false; droppedTags = 0;
+  rowCache.clear(); listSig = ''; listNotice = null; sortRows = null; sortKey = ''; sortDir = 0; sortAt = 0;
+  const tb = $('#tbody'); if (tb) { tb.textContent = ''; tb.dataset.mode = ''; }
+}
 const marginLevels = () => { const a = [], p0 = +O.p0, p1 = +O.p1, st = +O.ps || 0.25; for (let p = p0; p <= p1 + 1e-9; p += st) a.push(+p.toFixed(2)); return a; };
 
 function validateScenario(parts) {
@@ -137,10 +149,23 @@ handlers.tags = b => {
   for (const r of b.reads) {
     const epc = clean(r.epc); if (!epc) continue;
     let t = tags.get(epc);
-    if (!t) { t = { epc, idx: ++order, count: 0, first: rel, sum: 0, n: 0, max: -999, min: 999, power: run.power ?? r.power }; tags.set(epc, t); }
+    if (!t) {
+      if (tags.size >= MAX_TAGS) {
+        droppedTags += r.count || 1;
+        if (!tagsTruncated) {
+          tagsTruncated = true;
+          const m = `唯一标签数量已达上限 ${MAX_TAGS}，后续新 EPC 不再计入；已有标签仍继续统计`;
+          addLog({ level: 'warn', msg: m, ts: Date.now() }); toast(m);
+        }
+        continue;
+      }
+      t = { epc, idx: ++order, count: 0, first: rel, sum: 0, n: 0, max: -999, min: 999, power: run.power ?? r.power };
+      tags.set(epc, t); tagList.push(t);
+    }
     t.count += r.count; t.last = rel; t.lastAbs = now; t.from = b.id; t.rssi = r.rssi; t.ant = r.antenna;
     if (r.rssiN) { t.sum += r.rssiSum; t.n += r.rssiN; } if (r.maxRssi != null) t.max = Math.max(t.max, r.maxRssi); if (r.minRssi != null) t.min = Math.min(t.min, r.minRssi);
-    if (r.tid) t.tid = clean(r.tid); if (r.pc) t.pc = r.pc; if (r.xpc) t.xpc = r.xpc; if (r.crh) t.crh = r.crh; if (r.phase != null) t.phase = r.phase; if (r.doppler != null) t.doppler = r.doppler; if (r.freq != null) t.freq = r.freq; if (r.rts) t.rts = r.rts;
+    if (r.tid) { t.tid = clean(r.tid); hasTid = true; }
+    if (r.pc) t.pc = r.pc; if (r.xpc) t.xpc = r.xpc; if (r.crh) t.crh = r.crh; if (r.phase != null) t.phase = r.phase; if (r.doppler != null) t.doppler = r.doppler; if (r.freq != null) t.freq = r.freq; if (r.rts) t.rts = r.rts;
     st.epcs.set(epc, (st.epcs.get(epc) || 0) + r.count);
     if (logOn && run.runRows && run.runRows.length < 500000) run.runRows.push([new Date(r.ts || now).toISOString(), epc, r.tid || '', r.antenna ?? '', r.rssi ?? '', r.freq ?? '', s ? (s.iface === 'sim' ? nameOf(s) : s.host) : '', r.phase ?? '', r.doppler ?? '', run.power ?? r.power ?? '', r.count].join(','));
     else if (logOn && run.runRows && !runLogTruncated) { runLogTruncated = true; run.logTruncated = true; toast('本轮日志已达 500000 条上限，后续明细未缓存'); }
@@ -177,24 +202,100 @@ function cellStr(t, k) {
   if (k === 'power') return fix(v, 2); if (k === 'phase' || k === 'doppler') return fix(v, 2); if (k === 'freq') return fix(v, 2);
   return String(v);
 }
-const anyTid = () => [...tags.values()].some(t => t.tid) || (lastRun ? lastRun.parts : participants().map(s => s.id)).some(id => { const s = srcById(id); return s && activeCfg(s).fastId; });
+const anyTid = () => hasTid || (lastRun ? lastRun.parts : participants().map(s => s.id)).some(id => { const s = srcById(id); return s && activeCfg(s).fastId; });
 const visCols = () => { const tid = anyTid(); return colOrder.filter(k => colOn[k] && ((k !== 'tid' && k !== 'model') || tid)); };
-function rowsSorted() {
-  const r = [...tags.values()], k = sort.key, d = sort.dir;
-  if (k === 'idx') return d > 0 ? r : r.reverse();
-  return r.sort((a, b) => { const x = cellVal(a, k), y = cellVal(b, k); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * d; });
+// Sorting is throttled: volatile keys (since/last/count) change constantly, and sorting
+// hundreds of thousands of tags on every animation frame is what made the old table slow.
+function rowsSorted(force) {
+  const k = sort.key, d = sort.dir, now = Date.now();
+  if (k === 'idx' && d > 0) return tagList;
+  if (!force && sortRows && sortKey === k && sortDir === d && now - sortAt < 1000) return sortRows;
+  const r = k === 'idx' ? [...tagList].reverse() : [...tagList].sort((a, b) => { const x = cellVal(a, k), y = cellVal(b, k); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * d; });
+  sortRows = r; sortKey = k; sortDir = d; sortAt = now;
+  return r;
 }
-function shade(t) { if (!t.lastAbs) return ''; const age = Date.now() - t.lastAbs; if (age < 1000) return ''; const k = Math.min(1, (age - 1000) / 14000), v = Math.round(255 - k * 92); return `background:rgb(${v},${v},${v})`; }
-function renderList() {
-  const cols = visCols();
-  $('#thead').innerHTML = '<tr>' + cols.map(k => `<th data-k="${k}" draggable="true" scope="col" ${sort.key === k ? `aria-sort="${sort.dir > 0 ? 'ascending' : 'descending'}"` : ''}>${esc(CK[k].l)}${fmtOf(k) === 'b64' ? ' (B64)' : ''}${sort.key === k && k !== 'idx' ? `<span class="ar">${sort.dir > 0 ? '▲' : '▼'}</span>` : ''}</th>`).join('') + '</tr>';
-  const rows = rowsSorted(), lim = 3000, html = [];
-  for (const t of rows.slice(0, lim)) {
-    const f = toiOf(t.epc);
-    html.push(`<tr data-epc="${t.epc}" class="${selected === t.epc ? 'sel' : ''}" style="${shade(t)}">` + cols.map(k => k === 'epc' && f ? `<td class="toi" style="background:${esc(f.colorOf(t.epc))}" title="${esc(f.name)}">${esc(cellStr(t, k))}</td>` : `<td${CK[k].n ? ' class="n"' : ''}>${esc(cellStr(t, k))}</td>`).join('') + '</tr>');
+// Age shading is quantized so a row's style is only rewritten when the shade changes.
+function shadeLevel(t) {
+  if (!t.lastAbs) return 0;
+  const age = Date.now() - t.lastAbs;
+  if (age < 1000) return 0;
+  return Math.round(Math.min(1, (age - 1000) / 14000) * 24);
+}
+function makeRow(t, cols) {
+  const tr = document.createElement('tr');
+  tr.dataset.epc = t.epc;
+  const cells = cols.map(k => { const td = document.createElement('td'); if (CK[k].n) td.className = 'n'; tr.appendChild(td); return td; });
+  return { tr, cells, vals: new Array(cols.length).fill(null), shade: -1, toi: '', sel: false };
+}
+function patchRow(row, t, cols, f) {
+  const sel = selected === t.epc;
+  if (row.sel !== sel) { row.tr.classList.toggle('sel', sel); row.sel = sel; }
+  for (let i = 0; i < cols.length; i++) {
+    const k = cols[i], td = row.cells[i], v = cellStr(t, k);
+    if (row.vals[i] !== v) { td.textContent = v; row.vals[i] = v; }
+    if (k === 'epc') {
+      const key = f ? f.id + '|' + f.colorOf(t.epc) : '';
+      if (row.toi !== key) {
+        td.classList.toggle('toi', !!f);
+        if (f) { td.style.background = f.colorOf(t.epc); td.title = f.name; }
+        else { td.style.background = ''; td.removeAttribute('title'); }
+        row.toi = key;
+      }
+    }
   }
-  if (rows.length > lim) html.push(`<tr><td colspan="${cols.length}" style="color:#888">… 仅显示前 ${lim} 行（共 ${rows.length} 个唯一标签，导出 CSV 可查看全部）</td></tr>`);
-  $('#tbody').innerHTML = html.join('');
+  const lv = shadeLevel(t);
+  if (row.shade !== lv) {
+    if (lv) { const v = Math.round(255 - (lv / 24) * 92); row.tr.style.background = `rgb(${v},${v},${v})`; }
+    else row.tr.style.background = '';
+    row.shade = lv;
+  }
+}
+function renderList(force) {
+  const tb = $('#tbody');
+  if (tb.dataset.mode !== 'list') { tb.textContent = ''; rowCache.clear(); listSig = ''; listNotice = null; tb.dataset.mode = 'list'; force = true; }
+  const cols = visCols(), sig = cols.join(',') + '|' + sort.key + '|' + sort.dir;
+  if (sig !== listSig) {
+    $('#thead').innerHTML = '<tr>' + cols.map(k => `<th data-k="${k}" draggable="true" scope="col" ${sort.key === k ? `aria-sort="${sort.dir > 0 ? 'ascending' : 'descending'}"` : ''}>${esc(CK[k].l)}${fmtOf(k) === 'b64' ? ' (B64)' : ''}${sort.key === k && k !== 'idx' ? `<span class="ar">${sort.dir > 0 ? '▲' : '▼'}</span>` : ''}</th>`).join('') + '</tr>';
+    if (listSig) { tb.textContent = ''; rowCache.clear(); listNotice = null; force = true; }
+    listSig = sig;
+  }
+  const rows = rowsSorted(force), desired = rows.slice(0, MAX_ROWS);
+  const desiredRows = desired.map(t => {
+    let row = rowCache.get(t.epc);
+    if (!row) { row = makeRow(t, cols); rowCache.set(t.epc, row); }
+    patchRow(row, t, cols, toiOf(t.epc));
+    return row;
+  });
+  const keep = new Set(desired.map(t => t.epc));
+  for (const tr of [...tb.children]) {
+    if (tr === listNotice) continue;
+    if (!keep.has(tr.dataset.epc)) { tr.remove(); rowCache.delete(tr.dataset.epc); }
+  }
+  const kids = [...tb.children].filter(el => el !== listNotice);
+  let prefix = kids.length <= desiredRows.length;
+  if (prefix) for (let i = 0; i < kids.length; i++) if (kids[i] !== desiredRows[i].tr) { prefix = false; break; }
+  if (prefix && kids.length < desiredRows.length) {
+    const frag = document.createDocumentFragment();
+    for (let i = kids.length; i < desiredRows.length; i++) frag.appendChild(desiredRows[i].tr);
+    if (listNotice) tb.insertBefore(frag, listNotice); else tb.appendChild(frag);
+  } else if (!prefix) {
+    const now = Date.now();
+    if (force || now - lastFullOrder > 750) {
+      const frag = document.createDocumentFragment();
+      for (const row of desiredRows) frag.appendChild(row.tr);
+      tb.textContent = '';
+      listNotice = null;
+      tb.appendChild(frag);
+      lastFullOrder = now;
+    }
+  }
+  if (rows.length > MAX_ROWS) {
+    if (!listNotice) { listNotice = document.createElement('tr'); listNotice.appendChild(document.createElement('td')); listNotice.firstChild.style.color = '#888'; }
+    const td = listNotice.firstChild, txt = `… 仅显示前 ${MAX_ROWS} 行（共 ${rows.length} 个唯一标签，导出 CSV 可查看全部）`;
+    if (td.colSpan !== cols.length) td.colSpan = cols.length;
+    if (td.textContent !== txt) td.textContent = txt;
+    if (tb.lastElementChild !== listNotice) tb.appendChild(listNotice);
+  } else if (listNotice) { listNotice.remove(); listNotice = null; }
 }
 /* ---------- table view ---------- */
 function tvData() {
@@ -217,7 +318,9 @@ function renderTable() {
     const line = (name, f) => `<tr><td>${esc(name)}</td>${ids.map(id => { const c = cnt(srcStats[id]?.epcs || new Map(), f); return `<td>${f ? pct(c.n, f) : c.n}</td><td>${c.reads}</td>`; }).join('')}${(() => { const c = cnt(all, f); return `<td>${f ? pct(c.n, f) : c.n}</td><td>${c.reads}</td>`; })()}</tr>`;
     b = files.map(f => line(f.name, f)).join('') + line('Strays（游离）', null);
   }
-  $('#thead').innerHTML = h; $('#tbody').innerHTML = b;
+  const tb = $('#tbody');
+  if (tb.dataset.mode !== 'table') { tb.dataset.mode = 'table'; rowCache.clear(); listSig = ''; listNotice = null; }
+  $('#thead').innerHTML = h; tb.innerHTML = b;
 }
 function renderToiSum() {
   const files = toiFiles.filter(f => f.on), el = $('#toiSum');
@@ -242,9 +345,10 @@ function render(force) {
   if (view === 'toi' && (force || now - lastToiR > 1000)) { lastToiR = now; renderToiView(); }
   if (view !== 'inventory') return;
   $('#grid').classList.toggle('tv', O.view === 'table');
-  if (O.view === 'table') renderTable(); else renderList();
+  if (O.view === 'table') renderTable(); else renderList(force);
   renderToiSum(); renderBlank();
   $('#f-uniq').textContent = tags.size; $('#f-rate').textContent = readRate().toFixed(3); $('#scenTxt').textContent = scenText();
+  const warn = $('#f-warn'); if (warn) { warn.hidden = !tagsTruncated; warn.textContent = tagsTruncated ? `唯一标签已达上限 ${MAX_TAGS}，新标签未计入` : ''; }
   if (run && run.phase === 'on') { const t = (now - lastRun.t0) / 1000; const p = plotPts[plotPts.length - 1]; if (!p || p[1] !== tags.size || t - p[0] > 1) plotPts.push([t, tags.size]); if (plotPts.length > 20000) plotPts.splice(0, plotPts.length - 19000); }
   $('#plot').hidden = !O.plot; if (O.plot) drawPlot();
 }
@@ -421,11 +525,20 @@ $('#tm-words').addEventListener('keydown', e => { const w = e.target; if (!w.dat
 $('#tm-words').addEventListener('paste', e => { const t = clean(e.clipboardData.getData('text')); if (t.length <= 4) return; e.preventDefault(); const ws = $$('#tm-words input:not(:disabled)'); let i = +e.target.dataset.w; for (let k = 0; k < t.length && ws[i]; k += 4, i++) ws[i].value = t.substr(k, 4); tmAsciiFromWords(); });
 $('#tm-ascii').addEventListener('input', tmWordsFromAscii);
 $('#tm-copy').onclick = () => copyText($$('#tm-words input:not(:disabled)').map(w => w.value || '....').join(' '));
-function tmSources() { return participants().filter(s => (infoOf(s) || {}).supportsAccess !== false); }
+function tmSources() { return participants().filter(s => s.iface !== 'rest' && (infoOf(s) || {}).supportsAccess !== false); }
 function tmRenderSrc(pref) {
   const list = tmSources(), cur = pref || $('#tm-src').value;
   $('#tm-src').innerHTML = list.length ? list.map(s => `<option value="${s.id}" ${s.id === cur ? 'selected' : ''}>${esc(nameOf(s))}</option>`).join('') : '<option value="">（没有支持标签读写的已连接数据源）</option>';
   $('#tm-srcRow').hidden = list.length === 1;
+  if (!tmBusy) ['#tm-read', '#tm-write', '#tm-setpwd', '#tm-lock', '#tm-kill'].forEach(id => { const b = $(id); if (b) b.disabled = !list.length; });
+  const note = $('#tm-note');
+  if (list.length) { note.hidden = true; note.textContent = ''; }
+  else {
+    note.hidden = false;
+    note.textContent = participants().length
+      ? '已连接的数据源均只支持盘点（Impinj IoT/REST 接口）；标签读写、锁定和灭活需要 LLRP 驱动。'
+      : '没有已启用且已连接的数据源。请先连接支持标签读写的读写器。';
+  }
 }
 function tmModel() {
   const tid = clean($('#tm-tid').value) || (tags.get(clean($('#tm-epc').value)) || {}).tid;
@@ -437,12 +550,14 @@ function openMemory(t) {
   show('memory'); if (!t) return;
   $('#tm-epc').value = t.epc; $('#tm-tid').value = t.tid || ''; $('#tm-repc').checked = true; tmRenderSrc(t.from); tmModel();
   $('#tm-bank').value = 'epc'; $('#tm-off').value = 2; $('#tm-cnt').value = Math.min(32, Math.max(1, t.epc.length / 4)); tmWords();
-  tmStatus('', '就绪');
+  const src = srcById(t.from), info = infoOf(src);
+  if (src && (src.iface === 'rest' || info?.supportsAccess === false)) tmStatus('bad', info?.accessNote || '该数据源仅支持盘点，标签操作需要 LLRP 驱动');
+  else tmStatus('', '就绪');
 }
 function tmStatus(cls, msg) { const s = $('#tm-status'); s.className = 'status' + (cls ? ' ' + cls : ''); s.textContent = msg; }
 function tmLock(on) { tmBusy = on; $$('#v-memory input, #v-memory select, #v-memory button, #v-memory textarea').forEach(e => { if (on) { e.dataset.was = e.disabled ? '1' : ''; e.disabled = true; } else e.disabled = e.dataset.was === '1'; }); }
 async function tmOp(req, label) {
-  const s = srcById($('#tm-src').value); if (!s) { tmStatus('bad', '错误：没有可用的数据源（需要已启用、已连接且支持标签读写）'); return null; }
+  const s = srcById($('#tm-src').value); if (!s) { tmStatus('bad', '错误：没有可用的数据源。标签操作需要已启用、已连接且支持标签读写的 LLRP 数据源（Impinj IoT/REST 接口仅支持盘点）'); return null; }
   const byTid = $('#tm-rtid').checked, epc = clean($('#tm-epc').value), tid = clean($('#tm-tid').value);
   if (byTid ? !tid : !epc) { tmStatus('bad', `错误：请填写完整的${byTid ? ' TID' : ' EPC'}`); return null; }
   const pw = req.password ?? $('#tm-pwd').value.trim(); if (!/^[0-9a-f]{0,8}$/i.test(pw)) { tmStatus('bad', '错误：密码最多 8 位十六进制'); return null; }
@@ -491,6 +606,7 @@ function logHeader(r, extra) {
   const lines = [`# TagScope ${VERSION} inventory log`, `# Run started: ${r.startedAt.toISOString()}  (${r.startedAt.toString()})`, `# Scenario: ${_T(scenText())}${extra ? '  ' + extra : ''}`];
   lines.push('# Data completeness: ' + (r.incomplete ? 'INCOMPLETE — check errors' : 'complete within received reader reports'));
   if (r.logTruncated || logTruncated) lines.push('# WARNING: log cache limit reached; exported details are truncated');
+  if (tagsTruncated) lines.push(`# WARNING: unique tag limit ${MAX_TAGS} reached; ${droppedTags} reads of new EPCs were not counted`);
   for (const id of r.parts) { const s = srcById(id); if (!s) continue; const i = infoOf(s) || {}, c = activeCfg(s);
     lines.push(`# Reader: ${nameOf(s)} | host=${s.iface === 'sim' ? 'simulator' : s.host} | interface=${IFN[s.iface]} | model=${i.model || ''} | firmware=${i.firmware || ''} | preset=${s.presets[s.active] ? s.active : 'default'} | antennas=${c.ants} | mode=${c.mode} | session=${c.session} | search=${c.search} | power=${r.power ?? c.power} | fastId=${c.fastId}`); }
   return lines;
@@ -503,18 +619,18 @@ function flushRunLog(i) {
   run.runRows = [];
 }
 function csvCell(v) { v = String(v ?? ''); return /[,"\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
-function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [cols.map(k => csvCell(_T(CK[k].l))).join(','), ...rowsSorted().map(t => cols.map(k => csvCell(cellStr(t, k))).join(','))].join('\n'); }
+function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [cols.map(k => csvCell(_T(CK[k].l))).join(','), ...rowsSorted(true).map(t => cols.map(k => csvCell(cellStr(t, k))).join(','))].join('\n'); }
 $('#lg-on').onchange = e => store.set('logOn', e.target.checked);
 $('#lg-uniq').onchange = e => store.set('logUniq', e.target.checked);
 $('#lg-prefix').oninput = e => store.set('logPrefix', e.target.value);
 $('#lg-dl').onclick = () => { if (!readLog.length) return toast('暂无读取记录'); dl(`${store.get('logPrefix', 'TagScope') || 'TagScope'}_${stamp()}.csv`, [...(lastRun ? logHeader(lastRun) : []), LOG_HDR, ...readLog].join('\n')); };
 $('#lg-dlu').onclick = () => { if (!tags.size) return toast('暂无标签'); dl(`${store.get('logPrefix', 'TagScope') || 'TagScope'}_${stamp()}_unique.csv`, uniqueCsv()); };
-function fillLogging() { $('#lg-on').checked = store.get('logOn', false); $('#lg-uniq').checked = store.get('logUniq', false); $('#lg-prefix').value = store.get('logPrefix', 'TagScope'); $('#lg-info').textContent = `当前缓存 ${readLog.length} 条读取记录，${tags.size} 个唯一标签` + (logTruncated ? '（记录已截断）' : '') + (lastRun?.incomplete ? '（本次结果不完整）' : ''); }
+function fillLogging() { $('#lg-on').checked = store.get('logOn', false); $('#lg-uniq').checked = store.get('logUniq', false); $('#lg-prefix').value = store.get('logPrefix', 'TagScope'); $('#lg-info').textContent = `当前缓存 ${readLog.length} 条读取记录，${tags.size} 个唯一标签` + (tagsTruncated ? `（唯一标签已达上限 ${MAX_TAGS}，${droppedTags} 次读取未计入新标签）` : '') + (logTruncated ? '（记录已截断）' : '') + (lastRun?.incomplete ? '（本次结果不完整）' : ''); }
 
 const cmpVer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
 function bridgeVer() { const b = [...backends.values()].find(x => x.kind === 'bridge' && x.online); return b ? b.version : null; }
 function renderUpdates() { $('#up-web').textContent = VERSION; $('#up-br').textContent = bridgeVer() || '未连接'; $('#ab-ver').textContent = VERSION; $('#ab-br').textContent = bridgeVer() || '未连接'; $('#up-auto').checked = store.get('autoUpd', true);
-  const bv = bridgeVer(); if (bv && cmpVer(bv, '2.0.1') < 0) { $('#up-msg').textContent = `桥接服务版本 ${bv} 过旧，TagScope ${VERSION} 需要 2.0.1 或更高版本，请下载最新桥接服务。`; } }
+  const bv = bridgeVer(); if (bv && cmpVer(bv, VERSION) < 0) { $('#up-msg').textContent = `桥接服务版本 ${bv} 过旧，TagScope ${VERSION} 需要桥接服务 ${VERSION} 或更高版本，请下载最新桥接服务。`; } }
 async function checkUpdates(manual) {
   try { const r = await fetch('https://raw.githubusercontent.com/duguwuji/tagscope/main/package.json', { cache: 'no-store' }); const j = await r.json(); $('#up-latest').textContent = j.version;
     const old = [VERSION, bridgeVer()].filter(Boolean).some(v => cmpVer(v, j.version) < 0);

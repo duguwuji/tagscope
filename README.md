@@ -50,8 +50,22 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 | 驱动 | 适用设备 | 说明 |
 |---|---|---|
 | LLRP | Speedway R120/R220/R420、xPortal、xArray/xSpan，以及切换到 LLRP 模式的 R700/R660 | 功能最完整，支持盘点和全部标签操作 |
-| R700 REST | 运行 IoT Device Interface 的 R700/R660 | 只支持盘点。默认账号是 root/impinj，可接受自签名证书 |
+| R700 REST | 运行 IoT Device Interface 的 R700/R660 | **仅支持盘点和系统页**。默认账号是 root/impinj，可接受自签名证书 |
 | 模拟器 | 不需要硬件 | 所有数据都是模拟数据，设备型号显示为“模拟读写器（非真实设备）” |
+
+能力矩阵（“—”表示该接口不提供此能力）：
+
+| 能力 | LLRP | R700 REST | 模拟器 |
+|---|---|---|---|
+| 盘点 / 运行场景 | ✅ | ✅ | ✅ |
+| 标签读取 / 写入 / 块写 / 修改 EPC | ✅ | — | ✅ |
+| 锁定 / 灭活 | ✅ | — | ✅ |
+| Gen2 过滤、Fast ID、低占空比 | ✅ | 过滤、Fast ID | ✅ |
+| GPI 触发 | ✅ | — | ✅ |
+| GPO 控制 | ✅ | ✅ | ✅ |
+| 系统信息 / 主机名 / 区域 / 重启 | ✅（R700 经 IoT 接口） | ✅ | ✅（含恢复出厂） |
+
+标签存储页只会列出支持标签操作的数据源；连接 REST 数据源时，页面会明确提示“仅支持盘点”。
 
 ## 功能（对照 ItemTest 2.14.1 用户指南）
 
@@ -73,7 +87,7 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 - 一台读写器同一时间只接受一个 LLRP 客户端。连接前请关闭 ItemTest、MultiReader 等其他软件。
 - 连接时会把读写器的 LLRP 配置恢复为默认值，这和 ItemTest 的做法一致。
 - 灭活和永久锁定都无法撤销。界面会先要求确认。
-- 本版本 REST 驱动仅实现盘点；标签读写、锁定和灭活请使用 LLRP 驱动。
+- REST 驱动仅实现盘点与系统页；标签读写、锁定和灭活请使用 LLRP 驱动（界面与 API 都会明确拒绝 REST 的标签操作）。
 - 2.0.1 网页版需要 2.0.1 及以上的桥接服务（配对认证与批次编号）。旧版桥接服务请重新下载。
 - 接收灵敏度的 dBm 数值根据 Impinj 能力表换算：索引 1 表示最大灵敏度，按 −80 dBm 显示。
 
@@ -94,7 +108,11 @@ lib/driver-llrp.js     LLRP 驱动
 lib/driver-rest.js     R700 IoT Device Interface 驱动
 lib/driver-sim.js      模拟器
 test/                  模拟 LLRP 读写器和端到端测试（npm test）
+scripts/check-syntax.js 全部 JavaScript 文件的语法检查（npm run check）
+.github/workflows/     GitHub Actions CI（Node 18/20/22 上运行 npm test）
 ```
+
+版本号以 `package.json` 为唯一来源：`server.js` 与 `worker.js` 读取后注入页面的 `tagscope-version` meta，前端不再硬编码版本。
 
 ## 版权
 
