@@ -30,7 +30,7 @@ git push -u origin feature/reader-status
 - 两者相同 → 把补丁版本 +1（如 `2.0.1` → `2.0.2`），同步更新 README 与用户手册里的“当前版本”行，以 `chore: bump version to 2.0.2` 提交回 PR 分支；
 - PR 中已手动改过版本号 → 保持不动。做 minor / major 发布时，直接在 PR 里把 `package.json` 改成目标版本即可，工作流不会覆盖。
 
-随版本号一起更新的只有版本声明行：`README.md` / `README.en.md` 顶部的“当前版本 / Current version”，以及 `docs/user-guide-*.md` 的“适用版本 / Version”。“2.0.1 起需要……”这类历史兼容说明不会被改动。
+随版本号一起更新的只有版本声明行：`README.md` / `README.en.md` 结尾的“当前版本 / Current version”，以及 `docs/user-guide-*.md` 顶部的“适用版本 / Version”。“2.0.1 起需要……”这类历史兼容说明不会被改动。
 
 同一个 PR 只会自动递增一次，之后的推送不会继续加版本号。本地可手动运行：
 

@@ -16,7 +16,7 @@ const args = Object.fromEntries(process.argv.slice(2).filter(a => a.startsWith('
 const PORT = Number(args.port ?? process.env.PORT ?? 8080);
 const HOST = args.host || process.env.HOST || '127.0.0.1';
 const INDEX = path.join(__dirname, 'public', 'index.html');
-const STATIC = { '/app.js': 'app.js', '/sim.js': 'sim.js', '/tagdb.js': 'tagdb.js', '/views.js': 'views.js', '/i18n.js': 'i18n.js', '/validation.js': 'validation.js', '/run-buffer.js': 'run-buffer.js' };
+const STATIC = { '/app.js': 'app.js', '/scenes.js': 'scenes.js', '/sim.js': 'sim.js', '/tagdb.js': 'tagdb.js', '/views.js': 'views.js', '/i18n.js': 'i18n.js', '/validation.js': 'validation.js', '/run-buffer.js': 'run-buffer.js' };
 const split = s => String(s || '').split(',').map(v => v.trim()).filter(Boolean);
 const security = createSecurity({ host: HOST, port: () => server.address()?.port || PORT, token: process.env.TAGSCOPE_TOKEN,
   allowOrigins: split(args['allow-origin'] || process.env.TAGSCOPE_ALLOW_ORIGIN), allowHosts: split(args['allow-host'] || process.env.TAGSCOPE_ALLOW_HOST) });
