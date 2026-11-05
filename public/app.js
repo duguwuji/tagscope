@@ -246,14 +246,10 @@ function daUI() {
 $('#da-advT').onclick = () => { const p = $('#da-adv'); p.hidden = !p.hidden; $('#da-advT .car').textContent = p.hidden ? '▼' : '▲'; };
 /* ---------- simulator scenes ---------- */
 const SCENES = window.TagScopeScenes ? window.TagScopeScenes.SCENES : [];
-function daScene() {
-  const s = SCENES.find(x => x.id === $('#da-scene').value);
-  $('#da-simn').disabled = !!s;
-  const hint = $('#da-scenehint');
-  hint.hidden = !s; hint.textContent = s ? s.desc : '';
+function sceneHint(id) {
+  const sc = SCENES.find(x => x.id === id);
+  return sc ? `${sc.desc}（约 ${sc.duration} 秒，${sc.loop ? '循环' : '单次'}）` : '';
 }
-$('#da-scene').innerHTML = '<option value="">静态标签（随机）</option>' + SCENES.map(s => `<option value="${s.id}">${esc(s.title)}</option>`).join('');
-$('#da-scene').onchange = daScene;
 function openAdd(s) {
   if (s && run?.parts.includes(s.id)) return toast('请先停止盘点，再编辑数据源');
   editSrc = s || null;
@@ -261,7 +257,6 @@ function openAdd(s) {
   const v = s || { host: '', nick: '', iface: CLOUD ? 'sim' : 'llrp', port: '', tls: true, ins: true, cred: false, user: '', pass: '', simTags: 40 };
   $('#da-host').value = v.host; $('#da-nick').value = v.nick; $('#da-if').value = v.iface; $('#da-port').value = v.port || ''; $('#da-tls').checked = !!v.tls; $('#da-ins').checked = v.ins !== false;
   $('#da-cred').checked = !!v.cred; $('#da-user').value = v.user || ''; $('#da-pass').value = v.pass || ''; $('#da-simn').value = v.simTags || 40; $('#da-bridge').value = v.bridge || bridgeUrl;
-  $('#da-scene').value = v.scene || ''; daScene();
   $('#da-token').value = bridgeToken(CLOUD ? v.bridge || bridgeUrl : '');
   $('#da-herr').hidden = $('#da-nerr').hidden = true; $('#da-if').disabled = !!s;
   daUI(); show('dsadd'); setTimeout(() => $('#da-host').focus(), 0);
@@ -273,7 +268,7 @@ $('#da-ok').onclick = async () => {
   $('#da-herr').hidden = !!host || iface === 'sim'; $('#da-host').classList.toggle('inv', !host && iface !== 'sim');
   const dup = nick && sources.some(x => x !== editSrc && nameOf(x).toLowerCase() === nick.toLowerCase()); $('#da-nerr').hidden = !dup;
   if ((!host && iface !== 'sim') || dup) return;
-  const v = { host: host || 'simulator', nick: nick || (iface === 'sim' ? uniqueNick('模拟读写器') : ''), iface, port: $('#da-port').value, tls: $('#da-tls').checked, ins: $('#da-ins').checked, cred: $('#da-cred').checked, user: $('#da-user').value, pass: $('#da-pass').value, simTags: +$('#da-simn').value || 40, scene: iface === 'sim' ? $('#da-scene').value : '' };
+  const v = { host: host || 'simulator', nick: nick || (iface === 'sim' ? uniqueNick('模拟读写器') : ''), iface, port: $('#da-port').value, tls: $('#da-tls').checked, ins: $('#da-ins').checked, cred: $('#da-cred').checked, user: $('#da-user').value, pass: $('#da-pass').value, simTags: +$('#da-simn').value || 40 };
   if (CLOUD && iface !== 'sim') { v.bridge = normUrl($('#da-bridge').value) || 'http://localhost:8080'; bridgeUrl = v.bridge; store.set('bridge', bridgeUrl); }
   if (iface !== 'sim' && $('#da-token').value.trim()) setBridgeToken(CLOUD ? v.bridge : '', $('#da-token').value.trim());
   let s = editSrc;
@@ -347,9 +342,9 @@ function wire(s, ov = {}) {
   };
 }
 
-let viewP = 'default', draft = null, dirty = false;
+let viewP = 'default', draft = null, dirty = false, sceneDraft = '', sceneDirty = false;
 function openCfg(id) { cfgSrc = id; const s = srcById(id); viewP = s.presets[s.active] ? s.active : 'default'; loadDraft(); show('dscfg'); tab('inv'); }
-function loadDraft() { const s = srcById(cfgSrc); draft = presetCfg(s, viewP); dirty = false; fillCfg(); }
+function loadDraft() { const s = srcById(cfgSrc); draft = presetCfg(s, viewP); dirty = false; sceneDraft = s.iface === 'sim' ? (s.scene || '') : ''; sceneDirty = false; fillCfg(); }
 function renderCfgHead() {
   const s = srcById(cfgSrc); if (!s) return; const i = infoOf(s) || {}, r = rt(s.id);
   $('#dc-head').innerHTML = [['主机名', s.iface === 'sim' ? '模拟器' : s.host], ['接口', IFN[s.iface]], ['型号', i.model || '—'], ['昵称', nameOf(s)], ['区域', i.region || '—'], ['状态', r.connected ? (r.running ? '盘点中' : '已连接') : r.err ? '不可达' : '未连接']].map(([k, v]) => `<span>${k}: <b>${esc(v)}</b></span>`).join('');
@@ -377,6 +372,13 @@ function fillCfg() {
   renderFilters();
   $('#dc-ldc').checked = !!(c.ldc && c.ldc.enabled); $('#dc-ldcE').value = c.ldc ? c.ldc.emptyTimeout : 500; $('#dc-ldcP').value = c.ldc ? c.ldc.pingInterval : 200;
   [...$$('#dc-ldc,#dc-ldcE,#dc-ldcP')].forEach(e => e.disabled = s.iface === 'rest');
+  $('#dc-sceneP').hidden = s.iface !== 'sim';
+  if (s.iface === 'sim') {
+    const sel = $('#dc-scene');
+    if (sel.options.length !== SCENES.length + 1) sel.innerHTML = '<option value="">静态标签（随机）</option>' + SCENES.map(x => `<option value="${x.id}">${esc(x.title)}</option>`).join('');
+    sel.value = sceneDraft;
+    $('#dc-scenehint').textContent = sceneDraft ? sceneHint(sceneDraft) : `使用 ${s.simTags || 40} 个随机静态标签，标签常驻场内。`;
+  }
   // diagnostics
   const go = i.gpo || 0;
   $('#dc-gpo').innerHTML = go && rt(s.id).connected ? range(1, go).map(p => `<label><span class="sw"><input type="checkbox" data-gpo="${p}"><span></span></span>GPO ${p}</label>`).join('') : `<span class="hint">${rt(s.id).connected ? '该设备没有可控制的 GPO 端口' : '连接数据源后可控制 GPO'}</span>`;
@@ -406,7 +408,13 @@ function readCfgForm() {
 }
 function validateGpi() { let bad = false; for (const tr of $$('#dc-gpi tr[data-p]')) { const g = draft.gpi[tr.dataset.p] || {}; const b = g.start && g.stop && (g.startLvl || 'high') === (g.stopLvl || 'low'); tr.classList.toggle('bad', !!b); bad = bad || b; } $('#dc-gpi').classList.toggle('bad', !!bad); return !bad; }
 $('#dc-inv').addEventListener('change', e => {
-  const t = e.target; dirty = true;
+  const t = e.target;
+  if (t.id === 'dc-scene') {
+    sceneDraft = t.value; sceneDirty = true;
+    $('#dc-scenehint').textContent = sceneDraft ? sceneHint(sceneDraft) : `使用 ${srcById(cfgSrc).simTags || 40} 个随机静态标签，标签常驻场内。`;
+    return;
+  }
+  dirty = true;
   if (t.closest('#dc-antTbl')) { const a = t.dataset.a; draft.per[a] = { ...(draft.per[a] || {}), [t.dataset.k]: +t.value }; return; }
   if (t.closest('#dc-gpi')) { const p = t.closest('tr').dataset.p, k = t.dataset.k; draft.gpi = draft.gpi || {};
     if ((k === 'start' || k === 'stop') && t.checked) for (const q of Object.keys(draft.gpi)) if (q !== p && draft.gpi[q]) draft.gpi[q][k] = false;
@@ -422,7 +430,7 @@ $('#dc-fadd').onclick = () => { draft.filters = draft.filters || []; if (draft.f
 $('#dc-aall').onclick = () => { const i = infoOf(srcById(cfgSrc)) || {}; $('#dc-ants').value = range(1, i.antennaCount || 4).join(', '); readCfgForm(); dirty = true; fillCfg(); };
 $('#dc-aclr').onclick = () => { $('#dc-ants').value = ''; readCfgForm(); dirty = true; };
 $('#dc-indT').onclick = () => { const p = $('#dc-ind'); p.hidden = !p.hidden; $('#dc-indT .car').textContent = p.hidden ? '▼' : '▲'; };
-$('#dc-preset').onchange = async e => { if (dirty && !confirm('放弃未保存的修改？')) { e.target.value = viewP; return; } viewP = e.target.value; loadDraft(); };
+$('#dc-preset').onchange = async e => { if ((dirty || sceneDirty) && !confirm('放弃未保存的修改？')) { e.target.value = viewP; return; } viewP = e.target.value; loadDraft(); };
 function validName(s) { return v => !v ? '请输入名称' : v === 'default' || s.presets[v] ? '该名称已存在' : ''; }
 async function savePreset() {
   const s = srcById(cfgSrc); readCfgForm();
@@ -430,16 +438,28 @@ async function savePreset() {
   if (!validateGpi()) return toast('GPI 配置错误：同一端口的启动与停止电平不能相同');
   if ((draft.filters || []).some(f => f.match === f.miss)) return toast('过滤器的匹配与不匹配动作不能相同');
   if ((draft.filters || []).some(f => !clean(f.mask))) return toast('请填写过滤器掩码，或移除空过滤器');
+  const nextScene = s.iface === 'sim' ? sceneDraft : '';
+  const sceneChanged = nextScene !== (s.scene || '');
+  const presetDirty = dirty;
+  if (sceneChanged && run && run.parts.includes(s.id)) return toast('请先停止盘点，再修改模拟场景');
   try { draft = TagScopeValidation.preset(draft, defaultPreset(infoOf(s))); } catch (e) { return toast(e.message); }
   let name = viewP;
   if (viewP === 'default' && dirty) { name = await ask('保存为新预设', '预设名称:', uniqueP(s, 'copy_of_default'), validName(s)); if (!name) return; }
   if (name !== 'default') s.presets[name] = clone(draft);
-  s.active = name; viewP = name; saveSources(); dirty = false; loadDraft();
-  toast(`已保存，“${name}”为当前预设` + (run && run.parts.includes(s.id) ? '，将在下次运行时生效' : ''));
+  s.active = name; s.scene = nextScene; viewP = name; saveSources(); dirty = false; sceneDirty = false;
+  let reconnected = false;
+  if (sceneChanged && s.enabled && rt(s.id).connected) {
+    try { await disconnectSource(s); } catch (_) { }
+    await connectSource(s); reconnected = !rt(s.id).err;
+  }
+  loadDraft();
+  toast(sceneChanged && !presetDirty
+    ? '模拟场景已保存' + (reconnected ? '，数据源已重新连接' : '')
+    : `已保存，“${name}”为当前预设` + (run && run.parts.includes(s.id) ? '，将在下次运行时生效' : '') + (reconnected ? '；模拟场景已重新连接' : ''));
 }
 const uniqueP = (s, b) => { let n = b, i = 2; while (s.presets[n]) n = `${b}_${i++}`; return n; };
 $('#dc-save').onclick = savePreset;
-$('#dc-cancel').onclick = () => { dirty = false; show('inventory'); };
+$('#dc-cancel').onclick = () => { dirty = false; sceneDirty = false; show('inventory'); };
 $('#dc-reset').onclick = () => { loadDraft(); toast('已恢复为上次保存的设置'); };
 $('#dc-del').onclick = () => { const s = srcById(cfgSrc); if (viewP === 'default' || !confirm(`删除预设“${viewP}”？`)) return; delete s.presets[viewP]; if (s.active === viewP) s.active = 'default'; viewP = s.active; saveSources(); loadDraft(); };
 $('#dc-copy').onclick = async () => { const s = srcById(cfgSrc); readCfgForm(); const n = await ask('复制预设', '新预设名称:', uniqueP(s, 'copy_of_' + viewP), validName(s)); if (!n) return; s.presets[n] = clone(draft); viewP = n; saveSources(); loadDraft(); };

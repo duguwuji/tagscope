@@ -245,7 +245,21 @@ Requires the Impinj extensions (Octane LLRP). When enabled, an antenna that read
 | Empty field timeout (ms) (空场超时) | 500 |
 | Field ping interval (ms) (场探测间隔) | 200 |
 
-### 5.7 Diagnostics
+### 5.7 Simulator scenes
+
+Simulator scenes are chosen in the "Simulator scene" panel of the data source configuration page (shown for simulated sources only), not in the "Add data source" dialog. A scene injects tag arrivals and departures, per-antenna RSSI, GPI pulses and antenna dropouts on a timeline; while a scene is selected it defines the tag population and the "Simulated tag count" is not used.
+
+| Scene | Duration | Loop | Purpose |
+|---|---|---|---|
+| Conveyor sorting | 50 s | Yes | Missed reads and latency at high speed |
+| Dock door receiving | 60 s | Yes | GPI-triggered inventory and antenna faults |
+| Retail shelf count | 90 s | No | Large tag populations and count accuracy |
+| Smart tool cabinet | 70 s | No | Door-triggered inventory and differences |
+| Access gate / badges | 45 s | Yes | Direction detection and lingering alerts |
+
+Saving writes the scene to the data source; a connected data source reconnects automatically to apply it. Stop inventory before changing the scene.
+
+### 5.8 Diagnostics
 
 - **GPO control (GPO 控制)**: switch each GPO output of the reader high / low, to test stack lights, buzzers, gates and other peripherals.
 - **Simulated GPI input (模拟 GPI 输入, simulator only)**: change the simulated reader's GPI levels by hand to rehearse GPI triggers.
