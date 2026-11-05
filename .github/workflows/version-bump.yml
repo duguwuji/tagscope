@@ -56,4 +56,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: gh workflow run ci.yml --ref "$BRANCH"
+        # workflow_dispatch 只有在 ci.yml 已进入默认分支后才可用；合并前跳过并告警。
+        run: gh workflow run ci.yml --ref "$BRANCH" || echo "::warning::无法派发 CI（ci.yml 尚未在默认分支上），本次递增提交没有 CI 结果"
