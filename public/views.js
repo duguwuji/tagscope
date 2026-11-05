@@ -747,8 +747,8 @@ $('#sys-gpo').addEventListener('click', async e => {
    Navigation & init
    ===================================================================== */
 function show(v) {
-  if (view === 'dscfg' && v !== 'dscfg' && dirty && !confirm('放弃对数据源设置的未保存修改？')) return;
-  if (v !== 'dscfg') dirty = false;
+  if (view === 'dscfg' && v !== 'dscfg' && (dirty || sceneDirty) && !confirm('放弃对数据源设置的未保存修改？')) return;
+  if (v !== 'dscfg') { dirty = false; sceneDirty = false; }
   view = v; $$('main > .view').forEach(x => x.hidden = x.id !== 'v-' + v);
   const navV = v === 'invset' ? 'inventory' : v;
   $$('.ni[data-nav]').forEach(b => b.toggleAttribute('aria-current', b.dataset.nav === navV)); $$('.ni[aria-current]').forEach(b => b.setAttribute('aria-current', 'page'));
