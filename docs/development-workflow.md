@@ -21,7 +21,24 @@ git push -u origin feature/reader-status
 
 `npm test` 现在先运行 `npm run check`（全部 JavaScript 文件的语法检查，含 Worker 的 ES module 检查），再运行回归测试和模拟 LLRP 端到端测试。GitHub Actions（`.github/workflows/ci.yml`）会在 push 到 `main` 和所有 Pull Request 上，用 Node 18、20、22 分别执行同一命令；Cloudflare 构建命令也可以继续使用 `npm test`。
 
-版本号只在 `package.json` 中修改。`server.js` 和 `worker.js` 读取它并注入页面的 `tagscope-version` meta；前端、HTML 脚本标签和 Worker 缓存参数都不再写死版本号。发版时只改 `package.json` 的 `version` 字段即可。
+版本号只在 `package.json` 中修改。`server.js` 和 `worker.js` 读取它并注入页面的 `tagscope-version` meta；前端、HTML 脚本标签和 Worker 缓存参数都不再写死版本号。
+
+## 版本号自动递增
+
+`.github/workflows/version-bump.yml` 在 PR 打开、更新或重新打开时，比较 PR 分支与 `main` 的 `package.json` 版本：
+
+- 两者相同 → 把补丁版本 +1（如 `2.0.1` → `2.0.2`），以 `chore: bump version to 2.0.2` 提交回 PR 分支；
+- PR 中已手动改过版本号 → 保持不动。做 minor / major 发布时，直接在 PR 里把 `package.json` 改成目标版本即可，工作流不会覆盖。
+
+同一个 PR 只会自动递增一次，之后的推送不会继续加版本号。本地可手动运行：
+
+```sh
+node scripts/bump-version.js          # patch +1
+node scripts/bump-version.js minor    # 2.0.1 -> 2.1.0
+node scripts/bump-version.js major    # 2.0.1 -> 3.0.0
+```
+
+来自 fork 的 PR 无法被工作流推送，需要贡献者自己在 PR 中修改版本号；仓库设置需允许 Actions 使用写权限（Settings → Actions → General → Workflow permissions）。自动提交由 `GITHUB_TOKEN` 完成，按 GitHub 规则不会再触发新的工作流运行，因此递增提交本身不会再跑一次 CI。
 
 ## 预览与审查
 

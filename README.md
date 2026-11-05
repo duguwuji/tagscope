@@ -109,10 +109,11 @@ lib/driver-rest.js     R700 IoT Device Interface 驱动
 lib/driver-sim.js      模拟器
 test/                  模拟 LLRP 读写器和端到端测试（npm test）
 scripts/check-syntax.js 全部 JavaScript 文件的语法检查（npm run check）
-.github/workflows/     GitHub Actions CI（Node 18/20/22 上运行 npm test）
+scripts/bump-version.js 版本号递增（本地手动 / CI 自动）
+.github/workflows/     GitHub Actions：CI（Node 18/20/22 上运行 npm test）与 PR 版本号递增
 ```
 
-版本号以 `package.json` 为唯一来源：`server.js` 与 `worker.js` 读取后注入页面的 `tagscope-version` meta，前端不再硬编码版本。
+版本号以 `package.json` 为唯一来源：`server.js` 与 `worker.js` 读取后注入页面的 `tagscope-version` meta，前端不再硬编码版本。每个 Pull Request 会自动把补丁版本号 +1 并提交回 PR 分支；需要 minor / major 发布时在 PR 中手动改 `package.json`，工作流不会再动它。
 
 ## 版权
 

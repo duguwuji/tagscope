@@ -111,10 +111,11 @@ lib/driver-rest.js     R700 IoT Device Interface driver
 lib/driver-sim.js      Simulator
 test/                  Mock LLRP reader and end-to-end tests (npm test)
 scripts/check-syntax.js Syntax check for every JavaScript file (npm run check)
-.github/workflows/     GitHub Actions CI (npm test on Node 18/20/22)
+scripts/bump-version.js Version bump (manual locally, automatic in CI)
+.github/workflows/     GitHub Actions: CI (npm test on Node 18/20/22) and the PR version bump
 ```
 
-`package.json` is the single version source: `server.js` and `worker.js` read it and inject the `tagscope-version` meta tag, so the frontend no longer hardcodes a version.
+`package.json` is the single version source: `server.js` and `worker.js` read it and inject the `tagscope-version` meta tag, so the frontend no longer hardcodes a version. Every pull request gets its patch version incremented and committed back to the PR branch; for a minor or major release, edit `package.json` in the PR yourself and the workflow leaves it alone.
 
 ## Copyright
 

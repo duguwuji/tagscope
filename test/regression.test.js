@@ -229,6 +229,16 @@ test('version comes from package.json and is injected into the page', async () =
   assert(res.text.includes(`name="tagscope-version" content="${pkg.version}"`));
   assert(!/\?v=\d+\.\d+\.\d+/.test(res.text), 'index.html must not hardcode a version query');
 });
+test('version bump helper follows semver and rejects bad input', () => {
+  const { bump } = require('../scripts/bump-version');
+  assert.equal(bump('2.0.1'), '2.0.2');
+  assert.equal(bump('2.0.1', 'patch'), '2.0.2');
+  assert.equal(bump('2.0.1', 'minor'), '2.1.0');
+  assert.equal(bump('2.0.1', 'major'), '3.0.0');
+  assert.equal(bump('2.0.1-rc.1', 'patch'), '2.0.2');
+  assert.throws(() => bump('2.0', 'patch'), /无法解析版本号/);
+  assert.throws(() => bump('2.0.1', 'huge'), /未知的版本级别/);
+});
 test('unique tag cap stops new EPCs but keeps existing statistics', () => {
   const ctx = vm.createContext({
     MAX_TAGS: 2, tags: new Map(), tagList: [], srcStats: {}, totalReads: 0, rateBuf: [], readLog: [], order: 0,
