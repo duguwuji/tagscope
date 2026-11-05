@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="tagscope-version" content="__TAGSCOPE_VERSION__">
 <meta name="author" content="Hill <Hill@iotrfid.top>">
 <meta name="copyright" content="© 2026 Hill (Hill@iotrfid.top)">
 <title>TagScope</title>
-<script src="i18n.js?v=2.0.1"></script>
+<script src="i18n.js"></script>
 <style>
 :root{--title:#2F5D8C;--navy:#1F4E79;--sel:#1E63A8;--teal:#1A9E9A;--tx:#1E1E1E;--mu:#6B6B6B;--bd:#C9CED6;--bd2:#E3E6EA;--bg:#fff;--pg:#F3F5F8;--err:#C62828;--ok:#2E7D32;--mono:Consolas,"Cascadia Mono",Menlo,"Courier New",monospace}
 *{box-sizing:border-box}[hidden]{display:none!important}
@@ -227,7 +228,7 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
     <div class="grid-wrap" id="gridWrap"><table class="g" id="grid"><thead id="thead"></thead><tbody id="tbody"></tbody></table><div class="blank" id="blank"></div></div>
     <div class="toi-sum" id="toiSum" hidden></div>
     <div class="plot" id="plot" hidden><h4>唯一标签曲线</h4><canvas id="plotCv"></canvas></div>
-    <div class="sc-foot"><span id="scenTxt">连续 - 永久运行</span><span class="sp"></span><span>唯一标签: <b id="f-uniq">0</b></span><span>读取速率: <b id="f-rate">0.000</b> 次/秒</span></div>
+    <div class="sc-foot"><span id="scenTxt">连续 - 永久运行</span><span id="f-warn" style="color:var(--err)" hidden></span><span class="sp"></span><span>唯一标签: <b id="f-uniq">0</b></span><span>读取速率: <b id="f-rate">0.000</b> 次/秒</span></div>
   </section>
 
   <!-- ============ Inventory showcase settings ============ -->
@@ -283,6 +284,7 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
     <div class="page">
       <div class="tm-bar" id="tm-model">未知标签型号：启用 FAST ID 以识别</div>
       <div class="row" style="max-width:520px" id="tm-srcRow"><span>数据源:</span><select id="tm-src"></select></div>
+      <div class="note" id="tm-note" hidden></div>
       <div class="tm-id">
         <input type="radio" name="tmt" value="tid" id="tm-rtid" aria-label="按 TID 选择"><label for="tm-rtid">TID:</label><input type="text" id="tm-tid" class="mono" spellcheck="false">
         <input type="radio" name="tmt" value="epc" id="tm-repc" aria-label="按 EPC 选择" checked><label for="tm-repc">EPC:</label><input type="text" id="tm-epc" class="mono" spellcheck="false">
@@ -462,11 +464,11 @@ details.ext .pb{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
 <div class="menu" id="menu" hidden></div>
 <div class="dlg-bg" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" id="dlgBox"></div></div>
 <div class="toast" id="toast" role="status"></div>
-<script src="tagdb.js?v=2.0.1"></script>
-<script src="validation.js?v=2.0.1"></script>
-<script src="run-buffer.js?v=2.0.1"></script>
-<script src="sim.js?v=2.0.1"></script>
-<script src="app.js?v=2.0.1"></script>
-<script src="views.js?v=2.0.1"></script>
+<script src="tagdb.js"></script>
+<script src="validation.js"></script>
+<script src="run-buffer.js"></script>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+<script src="views.js"></script>
 </body>
 </html>

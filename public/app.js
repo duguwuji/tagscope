@@ -1,6 +1,6 @@
 // TagScope — Copyright © 2026 Hill (Hill@iotrfid.top). All rights reserved.
 'use strict';
-const VERSION = '2.0.1';
+const VERSION = (() => { const v = document.querySelector('meta[name="tagscope-version"]')?.content; return v && v !== '__TAGSCOPE_VERSION__' ? v : 'dev'; })();
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clean = s => String(s || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
@@ -277,6 +277,7 @@ function infoKv(s) {
   const i = infoOf(s) || {}, r = rt(s.id), ants = (i.antennas || []).map(a => `${a.id}${a.connected === false ? '✗' : ''}`).join(', ');
   const kv = [['昵称', nameOf(s)], ['主机名', s.iface === 'sim' ? '（模拟器）' : s.host], ['接口', IFN[s.iface] + (i.impinjExtensions ? '（Impinj 扩展）' : '')], ['状态', r.connected ? (r.running ? '盘点中' : '已连接') : (r.err || '未连接')],
     ['制造商', i.manufacturer], ['型号', i.model], ['序列号', i.serial], ['固件版本', i.firmware], ['区域', i.region], ['天线端口', i.antennaCount ? `${i.antennaCount}（${ants}）` : ''],
+    ['标签操作', i.supportsAccess === false ? '不支持（仅盘点）' : i.supportsAccess ? '支持' : ''], ['GPI 触发', i.supportsGpi === false ? '不支持' : i.supportsGpi ? '支持' : ''],
     ['发射功率范围', i.txPowerMin != null ? `${i.txPowerMin} – ${i.txPowerMax} dBm` : ''], ['RF 模式数', i.modes ? i.modes.length : ''], ['GPI / GPO', i.gpi != null ? `${i.gpi} / ${i.gpo}` : ''], ['频道数', i.channels]];
   return kv.filter(x => x[1] !== undefined && x[1] !== '' && x[1] !== null).map(([k, v]) => `<span>${esc(k)}:</span><span>${esc(v)}</span>`).join('');
 }

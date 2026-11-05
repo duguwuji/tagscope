@@ -194,20 +194,108 @@ test('fixed token containing HTML cannot terminate local bootstrap script', asyn
 });
 test('Worker text assets and HTML reference all new scripts with content hashes', async () => {
   const path = require('node:path'); let worker = fs.readFileSync(require.resolve('../worker.js'), 'utf8');
-  worker = worker.replace(/^import (\w+) from '([^']+)';.*$/gm, (_, name, file) => `const ${name} = ${JSON.stringify(fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8'))};`).replace('export default {', 'globalThis.worker = {');
+  worker = worker.replace(/^import (\w+) from '([^']+)';.*$/gm, (_, name, file) => {
+    const text = fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
+    return `const ${name} = ${file.endsWith('.json') ? `JSON.parse(${JSON.stringify(text)})` : JSON.stringify(text)};`;
+  }).replace('export default {', 'globalThis.worker = {');
   const c = vm.createContext({ URL, Response }); vm.runInContext(worker, c);
   const pageRes = await c.worker.fetch({ url: 'https://example.com/', method: 'GET' });
   const page = await pageRes.text(); assert(page.includes('window.TAGSCOPE_CLOUD=1')); assert.match(pageRes.headers.get('content-security-policy'), /sha256-/);
+  assert(page.includes(`name="tagscope-version" content="${require('../package.json').version}"`), 'Worker must inject the package version');
   const inline = page.match(/<script>([^<]+)<\/script>/)[1];
   const digest = require('node:crypto').createHash('sha256').update(inline).digest('base64');
   assert(pageRes.headers.get('content-security-policy').includes(`'sha256-${digest}'`), 'CSP hash must match the inline cloud flag');
-  for (const match of page.matchAll(/src="([\w-]+\.js)\?v=([^"<]+)"/g)) { assert.notEqual(match[2], '2.0.1'); const res = await c.worker.fetch({ url: 'https://example.com/' + match[1], method: 'GET' }); assert.equal(res.status, 200); assert.match(res.headers.get('content-type'), /javascript/); assert((await res.text()).length > 100); }
+  for (const match of page.matchAll(/src="([\w-]+\.js)\?v=([^"<]+)"/g)) { assert.notEqual(match[2], require('../package.json').version); const res = await c.worker.fetch({ url: 'https://example.com/' + match[1], method: 'GET' }); assert.equal(res.status, 200); assert.match(res.headers.get('content-type'), /javascript/); assert((await res.text()).length > 100); }
   assert.equal((await c.worker.fetch({ url: 'https://example.com/api/start', method: 'POST' })).status, 405);
 });
 test('lost ADD acknowledgement plus failed deletion reports cleanup as unconfirmed', async () => {
   const d = accessDriver(); let fault; d.on('fault', f => fault = f);
   d.call = async type => { d.commands.push(type); throw Error('connection lost'); };
   const r = await d.accessOp(write); assert.equal(r.ok, false); assert.equal(r.cleanupOk, false); assert(fault); assert(!d.commands.includes(MSG.ENABLE_ACCESSSPEC));
+});
+test('REST driver is explicitly inventory-only', async () => {
+  const d = new RestDriver();
+  d._req = async (method, path) => path === '/status' ? { serialNumber: 'R700-TEST' } : {};
+  const info = await d.connect({ host: 'reader.local' });
+  assert.equal(info.supportsAccess, false);
+  assert.equal(info.supportsGpi, false);
+  assert.match(info.accessNote, /仅支持盘点/);
+  await assert.rejects(d.accessOp({ op: 'read', targetEpc: 'AAAA', bank: 'epc', wordPointer: 0, wordCount: 1 }), /仅支持盘点/);
+});
+test('version comes from package.json and is injected into the page', async () => {
+  const pkg = require('../package.json');
+  assert.equal(bridge.state().version, pkg.version);
+  const res = await request('/');
+  assert(res.text.includes(`name="tagscope-version" content="${pkg.version}"`));
+  assert(!/\?v=\d+\.\d+\.\d+/.test(res.text), 'index.html must not hardcode a version query');
+});
+test('version bump helper follows semver and rejects bad input', () => {
+  const { bump } = require('../scripts/bump-version');
+  assert.equal(bump('2.0.1'), '2.0.2');
+  assert.equal(bump('2.0.1', 'patch'), '2.0.2');
+  assert.equal(bump('2.0.1', 'minor'), '2.1.0');
+  assert.equal(bump('2.0.1', 'major'), '3.0.0');
+  assert.equal(bump('2.0.1-rc.1', 'patch'), '2.0.2');
+  assert.throws(() => bump('2.0', 'patch'), /无法解析版本号/);
+  assert.throws(() => bump('2.0.1', 'huge'), /未知的版本级别/);
+});
+test('version bump helper updates the declared version in README and guides', () => {
+  const { bumpDocText } = require('../scripts/bump-version');
+  assert.equal(bumpDocText('当前版本：**2.0.2**', '2.0.3'), '当前版本：**2.0.3**');
+  assert.equal(bumpDocText('Current version: **2.0.2**', '2.0.3'), 'Current version: **2.0.3**');
+  assert.equal(bumpDocText('适用版本：TagScope 2.0.2（网页版与桥接服务）', '2.0.3'), '适用版本：TagScope 2.0.3（网页版与桥接服务）');
+  assert.equal(bumpDocText('Version: TagScope 2.0.2 (web app and bridge)', '2.0.3'), 'Version: TagScope 2.0.3 (web app and bridge)');
+  // 历史兼容说明不是版本声明，不能被改写。
+  assert.equal(bumpDocText('2.0.1 网页版需要 2.0.1 及以上的桥接服务', '2.0.3'), '2.0.1 网页版需要 2.0.1 及以上的桥接服务');
+});
+test('unique tag cap stops new EPCs but keeps existing statistics', () => {
+  const ctx = vm.createContext({
+    MAX_TAGS: 2, tags: new Map(), tagList: [], srcStats: {}, totalReads: 0, rateBuf: [], readLog: [], order: 0,
+    run: { parts: ['s'], t0: Date.now() - 1000, phase: 'on', activeRuns: { s: 'r' }, power: null, runRows: [] },
+    O: { scen: 'continuous', rwin: 0 }, handlers: {}, store: { get: () => false }, srcById: () => ({ iface: 'sim' }), nameOf: () => 'sim',
+    clean: s => s, addLog() {}, toast() {}, logTruncated: false, runLogTruncated: false, hasTid: false, tagsTruncated: false, droppedTags: 0,
+  });
+  vm.runInContext(cut(views, 'handlers.tags = b =>', 'function readRate('), ctx);
+  const batch = epc => ({ id: 's', runId: 'r', total: 1, reads: [{ epc, antenna: 1, count: 1, rssi: -50, ts: Date.now() }] });
+  for (const epc of ['AAAA', 'BBBB', 'CCCC']) ctx.handlers.tags(batch(epc));
+  assert.equal(ctx.tags.size, 2);
+  assert.equal(ctx.tagList.length, 2);
+  assert.equal(ctx.tagsTruncated, true);
+  assert.equal(ctx.droppedTags, 1);
+  assert.equal(ctx.totalReads, 3);
+  ctx.handlers.tags(batch('AAAA'));
+  assert.equal(ctx.tags.get('AAAA').count, 2);
+});
+test('unique CSV export carries the tag-cap warning', () => {
+  const ctx = vm.createContext({
+    VERSION: '2.0.1', MAX_TAGS: 200000, tagsTruncated: true, droppedTags: 7, lastRun: { incomplete: false },
+    visCols: () => ['epc'], rowsSorted: () => [{ epc: 'AAAA' }], csvCell: v => String(v), _T: s => s,
+    CK: { epc: { l: 'EPC' } }, cellStr: (t, k) => t[k],
+  });
+  vm.runInContext(cut(views, 'function uniqueHeader(', "$('#lg-on')"), ctx);
+  const csv = ctx.uniqueCsv();
+  assert.match(csv, /# WARNING: unique tag limit 200000 reached; 7 reads of new EPCs were not counted/);
+  assert.match(csv, /# Data completeness: complete/);
+  assert(csv.split('\n').includes('EPC'));
+  assert(csv.trim().endsWith('AAAA'));
+  ctx.tagsTruncated = false;
+  assert.doesNotMatch(ctx.uniqueCsv(), /WARNING/);
+});
+test('opening tag memory for a tag whose source was deleted does not throw', () => {
+  const els = {};
+  for (const id of ['#tm-epc', '#tm-tid', '#tm-repc', '#tm-bank', '#tm-off', '#tm-cnt']) els[id] = { value: '', checked: false };
+  const status = [];
+  const ctx = vm.createContext({
+    $: s => els[s], show() {}, tmRenderSrc() {}, tmModel() {}, tmWords() {},
+    srcById: () => undefined,
+    infoOf: s => { if (!s) throw Error('infoOf called without a source'); return {}; },
+    tmStatus: (c, m) => status.push([c, m]),
+  });
+  vm.runInContext(cut(views, 'function openMemory(', 'function tmStatus('), ctx);
+  assert.doesNotThrow(() => ctx.openMemory({ epc: 'AAAA', from: 'gone' }));
+  assert.equal(status.length, 1);
+  assert.equal(status[0][0], 'bad');
+  assert.match(status[0][1], /已被删除/);
 });
 test('REST filters map both match and miss actions to include/exclude', () => {
   const d = new RestDriver();

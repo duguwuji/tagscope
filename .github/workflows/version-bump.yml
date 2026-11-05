@@ -1,0 +1,60 @@
+name: Version bump
+
+# 每个 Pull Request 自动把 package.json 的补丁版本号 +1，并提交回 PR 分支。
+# 若 PR 中已经手动改过版本号（例如做 minor / major 发布），这里不会再动它。
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: version-bump-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    # 来自 fork 的 PR 无法推送；由贡献者自行修改 package.json。
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Bump patch version when the PR has not
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          base=$(git show "origin/$BASE_REF:package.json" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => console.log(JSON.parse(s).version))')
+          node scripts/bump-version.js --base "$base"
+      - name: Commit and push
+        id: commit
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git add -A -- package.json README.md README.en.md docs
+          if git diff --cached --quiet; then
+            echo "package.json already carries a new version; nothing to do"
+            exit 0
+          fi
+          next=$(node -p "require('./package.json').version")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: bump version to $next"
+          git push origin "HEAD:$BRANCH"
+          echo "pushed=1" >> "$GITHUB_OUTPUT"
+      # GITHUB_TOKEN 推送的提交不会自动触发工作流，这里显式派发 CI。
+      - name: Run CI on the bumped commit
+        if: steps.commit.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        # workflow_dispatch 只有在 ci.yml 已进入默认分支后才可用；合并前跳过并告警。
+        run: gh workflow run ci.yml --ref "$BRANCH" || echo "::warning::无法派发 CI（ci.yml 尚未在默认分支上），本次递增提交没有 CI 结果"

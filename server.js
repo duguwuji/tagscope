@@ -134,7 +134,7 @@ const routes = {
   'POST /api/gpi': async b => { V.integer(b.port, 1, 64, 'GPI'); if (typeof b.level !== 'boolean') throw new Error('GPI 电平无效'); const x = get(b.id); if (!x.driver.gpi) throw new Error('仅模拟器支持模拟 GPI 输入'); return x.driver.gpi(b.port, b.level); },
   'POST /api/access': async b => {
     const x = get(b.id);
-    if (!x.info.supportsAccess) throw new Error('当前驱动不支持标签操作');
+    if (!x.info.supportsAccess) throw new Error(x.info.accessNote || '当前驱动不支持标签操作');
     if (x.busy) throw new Error('上一个标签操作尚未完成');
     const request = V.access(b);
     if (x.status === 'unknown') throw new Error('设备状态未确认，请先停止盘点');
@@ -169,6 +169,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
       'Content-Security-Policy': `script-src 'self' 'nonce-${nonce}'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` });
     const bootstrap = security.localPage(req) ? `<script nonce="${nonce}">window.TAGSCOPE_BRIDGE_TOKEN=${JSON.stringify(security.token).replace(/</g, '\\u003c')};</script>` : '';
+    html = html.replace('content="__TAGSCOPE_VERSION__"', `content="${VERSION}"`);
     return res.end(html.replace('<script src="tagdb.js', bootstrap + '\n<script src="tagdb.js'));
   }
   if (url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
