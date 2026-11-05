@@ -550,8 +550,9 @@ function openMemory(t) {
   show('memory'); if (!t) return;
   $('#tm-epc').value = t.epc; $('#tm-tid').value = t.tid || ''; $('#tm-repc').checked = true; tmRenderSrc(t.from); tmModel();
   $('#tm-bank').value = 'epc'; $('#tm-off').value = 2; $('#tm-cnt').value = Math.min(32, Math.max(1, t.epc.length / 4)); tmWords();
-  const src = srcById(t.from), info = infoOf(src);
-  if (src && (src.iface === 'rest' || info?.supportsAccess === false)) tmStatus('bad', info?.accessNote || '该数据源仅支持盘点，标签操作需要 LLRP 驱动');
+  const src = srcById(t.from), info = src ? infoOf(src) : null;
+  if (!src) tmStatus('bad', '读取该标签的数据源已被删除；请重新连接数据源后再执行标签操作');
+  else if (src.iface === 'rest' || info?.supportsAccess === false) tmStatus('bad', info?.accessNote || '该数据源仅支持盘点，标签操作需要 LLRP 驱动');
   else tmStatus('', '就绪');
 }
 function tmStatus(cls, msg) { const s = $('#tm-status'); s.className = 'status' + (cls ? ' ' + cls : ''); s.textContent = msg; }
@@ -619,7 +620,13 @@ function flushRunLog(i) {
   run.runRows = [];
 }
 function csvCell(v) { v = String(v ?? ''); return /[,"\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
-function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [cols.map(k => csvCell(_T(CK[k].l))).join(','), ...rowsSorted(true).map(t => cols.map(k => csvCell(cellStr(t, k))).join(','))].join('\n'); }
+function uniqueHeader() {
+  const lines = [`# TagScope ${VERSION} unique tag export`, `# Generated: ${new Date().toISOString()}`];
+  if (lastRun) lines.push('# Data completeness: ' + (lastRun.incomplete ? 'INCOMPLETE — check errors' : 'complete within received reader reports'));
+  if (tagsTruncated) lines.push(`# WARNING: unique tag limit ${MAX_TAGS} reached; ${droppedTags} reads of new EPCs were not counted; this export omits tags`);
+  return lines;
+}
+function uniqueCsv() { const cols = visCols().filter(k => k !== 'since'); return [...uniqueHeader(), cols.map(k => csvCell(_T(CK[k].l))).join(','), ...rowsSorted(true).map(t => cols.map(k => csvCell(cellStr(t, k))).join(','))].join('\n'); }
 $('#lg-on').onchange = e => store.set('logOn', e.target.checked);
 $('#lg-uniq').onchange = e => store.set('logUniq', e.target.checked);
 $('#lg-prefix').oninput = e => store.set('logPrefix', e.target.value);

@@ -247,6 +247,37 @@ test('unique tag cap stops new EPCs but keeps existing statistics', () => {
   ctx.handlers.tags(batch('AAAA'));
   assert.equal(ctx.tags.get('AAAA').count, 2);
 });
+test('unique CSV export carries the tag-cap warning', () => {
+  const ctx = vm.createContext({
+    VERSION: '2.0.1', MAX_TAGS: 200000, tagsTruncated: true, droppedTags: 7, lastRun: { incomplete: false },
+    visCols: () => ['epc'], rowsSorted: () => [{ epc: 'AAAA' }], csvCell: v => String(v), _T: s => s,
+    CK: { epc: { l: 'EPC' } }, cellStr: (t, k) => t[k],
+  });
+  vm.runInContext(cut(views, 'function uniqueHeader(', "$('#lg-on')"), ctx);
+  const csv = ctx.uniqueCsv();
+  assert.match(csv, /# WARNING: unique tag limit 200000 reached; 7 reads of new EPCs were not counted/);
+  assert.match(csv, /# Data completeness: complete/);
+  assert(csv.split('\n').includes('EPC'));
+  assert(csv.trim().endsWith('AAAA'));
+  ctx.tagsTruncated = false;
+  assert.doesNotMatch(ctx.uniqueCsv(), /WARNING/);
+});
+test('opening tag memory for a tag whose source was deleted does not throw', () => {
+  const els = {};
+  for (const id of ['#tm-epc', '#tm-tid', '#tm-repc', '#tm-bank', '#tm-off', '#tm-cnt']) els[id] = { value: '', checked: false };
+  const status = [];
+  const ctx = vm.createContext({
+    $: s => els[s], show() {}, tmRenderSrc() {}, tmModel() {}, tmWords() {},
+    srcById: () => undefined,
+    infoOf: s => { if (!s) throw Error('infoOf called without a source'); return {}; },
+    tmStatus: (c, m) => status.push([c, m]),
+  });
+  vm.runInContext(cut(views, 'function openMemory(', 'function tmStatus('), ctx);
+  assert.doesNotThrow(() => ctx.openMemory({ epc: 'AAAA', from: 'gone' }));
+  assert.equal(status.length, 1);
+  assert.equal(status[0][0], 'bad');
+  assert.match(status[0][1], /已被删除/);
+});
 test('REST filters map both match and miss actions to include/exclude', () => {
   const d = new RestDriver();
   const base = { antennas: [{ id: 1, enabled: true, txDbm: 30 }], mode: 2, session: 1, searchMode: 2, tagPopulation: 32 };
