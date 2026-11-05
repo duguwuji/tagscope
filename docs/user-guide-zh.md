@@ -1,6 +1,6 @@
 # TagScope 用户手册
 
-适用版本：TagScope 2.0.3（网页版与桥接服务）  
+适用版本：TagScope 2.0.4（网页版与桥接服务）  
 作者：Hill · <Hill@iotrfid.top>  
 在线版：<https://tagscope.iotrfid.top>  
 源代码：<https://github.com/duguwuji/tagscope>  
