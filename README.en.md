@@ -4,6 +4,8 @@
 
 TagScope is a web-based RFID reader test and tag observation tool whose UI and workflow follow Impinj ItemTest 2.x. It works with real readers or with a built-in simulator for demos. The project has no npm dependencies and only needs Node.js 18 or later.
 
+Current version: **2.0.2** (web app and bridge)
+
 > The interface is available in English and Chinese: use the **English / 中文** link at the bottom of the sidebar (the default follows your browser language).
 
 ## Online web app
@@ -115,7 +117,7 @@ scripts/bump-version.js Version bump (manual locally, automatic in CI)
 .github/workflows/     GitHub Actions: CI (npm test on Node 18/20/22) and the PR version bump
 ```
 
-`package.json` is the single version source: `server.js` and `worker.js` read it and inject the `tagscope-version` meta tag, so the frontend no longer hardcodes a version. Every pull request gets its patch version incremented and committed back to the PR branch; for a minor or major release, edit `package.json` in the PR yourself and the workflow leaves it alone.
+`package.json` is the single version source: `server.js` and `worker.js` read it and inject the `tagscope-version` meta tag, so the frontend no longer hardcodes a version. Every pull request gets its patch version incremented, the version line at the top of this file and of the user guides updated, and the result committed back to the PR branch; for a minor or major release, edit `package.json` in the PR yourself and the workflow leaves it alone.
 
 ## Copyright
 

@@ -4,6 +4,8 @@
 
 TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界面和工作流程参照 Impinj ItemTest 2.x。它可以连接真实读写器，也可以用模拟器演示。项目不依赖任何 npm 包，只需要 Node.js 18 或更高版本。
 
+当前版本：**2.0.2**（网页版与桥接服务）
+
 ## 在线网页版
 
 地址：**[https://tagscope.iotrfid.top](https://tagscope.iotrfid.top)**（部署在 Cloudflare Workers）
@@ -113,7 +115,7 @@ scripts/bump-version.js 版本号递增（本地手动 / CI 自动）
 .github/workflows/     GitHub Actions：CI（Node 18/20/22 上运行 npm test）与 PR 版本号递增
 ```
 
-版本号以 `package.json` 为唯一来源：`server.js` 与 `worker.js` 读取后注入页面的 `tagscope-version` meta，前端不再硬编码版本。每个 Pull Request 会自动把补丁版本号 +1 并提交回 PR 分支；需要 minor / major 发布时在 PR 中手动改 `package.json`，工作流不会再动它。
+版本号以 `package.json` 为唯一来源：`server.js` 与 `worker.js` 读取后注入页面的 `tagscope-version` meta，前端不再硬编码版本。每个 Pull Request 会自动把补丁版本号 +1、同步更新本文件与用户手册顶部的版本声明，并提交回 PR 分支；需要 minor / major 发布时在 PR 中手动改 `package.json`，工作流不会再动它。
 
 ## 版权
 

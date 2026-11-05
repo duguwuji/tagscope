@@ -239,6 +239,15 @@ test('version bump helper follows semver and rejects bad input', () => {
   assert.throws(() => bump('2.0', 'patch'), /无法解析版本号/);
   assert.throws(() => bump('2.0.1', 'huge'), /未知的版本级别/);
 });
+test('version bump helper updates the declared version in README and guides', () => {
+  const { bumpDocText } = require('../scripts/bump-version');
+  assert.equal(bumpDocText('当前版本：**2.0.2**', '2.0.3'), '当前版本：**2.0.3**');
+  assert.equal(bumpDocText('Current version: **2.0.2**', '2.0.3'), 'Current version: **2.0.3**');
+  assert.equal(bumpDocText('适用版本：TagScope 2.0.2（网页版与桥接服务）', '2.0.3'), '适用版本：TagScope 2.0.3（网页版与桥接服务）');
+  assert.equal(bumpDocText('Version: TagScope 2.0.2 (web app and bridge)', '2.0.3'), 'Version: TagScope 2.0.3 (web app and bridge)');
+  // 历史兼容说明不是版本声明，不能被改写。
+  assert.equal(bumpDocText('2.0.1 网页版需要 2.0.1 及以上的桥接服务', '2.0.3'), '2.0.1 网页版需要 2.0.1 及以上的桥接服务');
+});
 test('unique tag cap stops new EPCs but keeps existing statistics', () => {
   const ctx = vm.createContext({
     MAX_TAGS: 2, tags: new Map(), tagList: [], srcStats: {}, totalReads: 0, rateBuf: [], readLog: [], order: 0,
