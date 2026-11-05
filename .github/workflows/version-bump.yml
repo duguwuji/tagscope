@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: version-bump-${{ github.event.pull_request.number }}
@@ -34,6 +35,9 @@ jobs:
           base=$(git show "origin/$BASE_REF:package.json" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => console.log(JSON.parse(s).version))')
           node scripts/bump-version.js --base "$base"
       - name: Commit and push
+        id: commit
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           if git diff --quiet -- package.json; then
             echo "package.json already carries a new version; nothing to do"
@@ -44,4 +48,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json
           git commit -m "chore: bump version to $next"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          git push origin "HEAD:$BRANCH"
+          echo "pushed=1" >> "$GITHUB_OUTPUT"
+      # GITHUB_TOKEN 推送的提交不会自动触发工作流，这里显式派发 CI。
+      - name: Run CI on the bumped commit
+        if: steps.commit.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: gh workflow run ci.yml --ref "$BRANCH"

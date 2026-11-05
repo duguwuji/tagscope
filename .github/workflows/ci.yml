@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # 版本递增提交由 GITHUB_TOKEN 推送，GitHub 不会自动触发工作流；
+  # version-bump.yml 在推送后显式派发一次，保证递增提交也有 CI 结果。
+  workflow_dispatch:
 
 permissions:
   contents: read

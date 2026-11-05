@@ -38,7 +38,7 @@ node scripts/bump-version.js minor    # 2.0.1 -> 2.1.0
 node scripts/bump-version.js major    # 2.0.1 -> 3.0.0
 ```
 
-来自 fork 的 PR 无法被工作流推送，需要贡献者自己在 PR 中修改版本号；仓库设置需允许 Actions 使用写权限（Settings → Actions → General → Workflow permissions）。自动提交由 `GITHUB_TOKEN` 完成，按 GitHub 规则不会再触发新的工作流运行，因此递增提交本身不会再跑一次 CI。
+来自 fork 的 PR 无法被工作流推送，需要贡献者自己在 PR 中修改版本号；仓库设置需允许 Actions 使用写权限（Settings → Actions → General → Workflow permissions）。自动提交由 `GITHUB_TOKEN` 完成，GitHub 不会为这类推送自动触发工作流，因此工作流在推送后显式派发一次 CI（`ci.yml` 支持 `workflow_dispatch`），保证递增提交同样有 CI 结果。派发需要 `actions: write` 权限，已在该工作流中声明。
 
 ## 预览与审查
 
