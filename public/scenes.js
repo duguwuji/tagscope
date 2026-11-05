@@ -133,7 +133,8 @@
           tid: spec.tid ? String(spec.tid).toUpperCase() : CHIPS[seq % CHIPS.length] + '2000' + hex(12),
           pc: '3000',
           user: spec.user ? String(spec.user).toUpperCase() : '0'.repeat(128),
-          reserved: (spec.accessPassword ? String(spec.accessPassword).toUpperCase() : '00000000') + '00000000',
+          // Reserved bank: kill password words first (zeroed), then the access password words.
+          reserved: '00000000' + (spec.accessPassword ? String(spec.accessPassword).toUpperCase() : '00000000'),
           antRssi: spec.antennas || {},
           jitter: +spec.jitter || 0,
           angle: Math.round(Math.random() * 360),

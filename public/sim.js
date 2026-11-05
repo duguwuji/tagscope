@@ -127,13 +127,13 @@
             rssi = base + (+a.txDbm - 30) * 0.9 + rnd(-t.jitter, t.jitter);
           } else {
             if (+a.txDbm < t.thr - (t.ant === a.id ? 0 : -4)) continue; // tag not energised
-            // session flags: S1 decays in 0.5–5 s, S2/S3 persist while simulator runs
-            if (t.flag[S] === 1 && S === 1 && now > t.decay[S]) t.flag[S] = 0;
-            if (mode === 5) { t.flag[S] = 0; continue; } // Single Target Reset: B → A, no reports
-            if (S > 0 && (mode === 1 || mode === 3) && t.flag[S] === 1) continue; // single target: B tags stay silent
-            if (S > 0 && (mode === 1 || mode === 3)) { t.flag[S] = 1; t.decay[S] = now + rnd(500, 5000); }
             rssi = t.base + (+a.txDbm - 30) * 0.9 - (t.ant === a.id ? 0 : rnd(4, 14)) + rnd(-2, 2);
           }
+          // Session flags apply to scene tags too: S1 decays in 0.5–5 s, S2/S3 persist while the simulator runs
+          if (t.flag[S] === 1 && S === 1 && now > t.decay[S]) t.flag[S] = 0;
+          if (mode === 5) { t.flag[S] = 0; continue; } // Single Target Reset: B → A, no reports
+          if (S > 0 && (mode === 1 || mode === 3) && t.flag[S] === 1) continue; // single target: B tags stay silent
+          if (S > 0 && (mode === 1 || mode === 3)) { t.flag[S] = 1; t.decay[S] = now + rnd(500, 5000); }
           if (rssi < (a.rxDbm === '' || a.rxDbm == null ? -80 : +a.rxDbm)) continue;
           t.angle = (t.angle + rnd(-6, 6) + 360) % 360;
           const ch = 1 + Math.floor(Math.random() * 50);

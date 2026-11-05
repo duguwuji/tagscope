@@ -337,7 +337,8 @@ test('simulator builds the selected scene and rejects unknown scenes', () => {
   const info = sim.connect({ scene: 'dock_door' });
   assert.match(info.model, /物流收货门/);
   assert.equal(sim.tags.length, 4 + 40 + 1);
-  assert(sim.tags.some(t => t.epc === '300833B2DDD9014000000001' && t.reserved.startsWith('12345678')));
+  // Gen2 reserved bank: kill password in words 0–1, access password in words 2–3.
+  assert(sim.tags.some(t => t.epc === '300833B2DDD9014000000001' && t.reserved === '0000000012345678'));
   assert.throws(() => new Sim().connect({ scene: 'nope' }), /未知的模拟场景/);
 });
 test('scene events disconnect antennas, remove and add tags', () => {
