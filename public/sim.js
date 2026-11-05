@@ -3,6 +3,8 @@
 // All data is synthetic. Models Gen2 Select (SL), session flags A/B, power thresholds, GPI/GPO and tag memory.
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.TagScopeSim = factory(); })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
+  const G = typeof self !== 'undefined' ? self : globalThis;
+  const Scenes = typeof module === 'object' && module.exports ? require('./scenes.js') : G.TagScopeScenes;
   const rnd = (a, b) => a + Math.random() * (b - a);
   const hex = n => Array.from({ length: n }, () => '0123456789ABCDEF'[Math.floor(Math.random() * 16)]).join('');
   const clean = s => String(s || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
@@ -15,16 +17,14 @@
   const ACT = { 'select,unselect': 0, 'select,nothing': 1, 'nothing,unselect': 2, 'unselect,nothing': 3, 'unselect,select': 4, 'nothing,select': 5 };
 
   class Sim {
-    constructor(emit) { this.emit = emit || (() => { }); this.running = false; this.armed = false; this.timer = null; this.gpiState = {}; this.gpoState = {}; }
-    connect({ simTags = 40, host = 'simulator' } = {}) {
+    constructor(emit) { this.emit = emit || (() => { }); this.running = false; this.armed = false; this.timer = null; this.gpiState = {}; this.gpoState = {}; this.scene = null; this.sceneT0 = 0; this.sceneIdx = 0; this.sceneTimer = null; this.antOff = new Set(); this._sel = null; }
+    connect({ simTags = 40, host = 'simulator', scene } = {}) {
       this.sys = null; this.t0 = Date.now();
-      const n = Math.max(1, Math.min(2000, +simTags || 40));
-      this.tags = Array.from({ length: n }, (_, i) => {
-        const tid = pickChip() + '2000' + hex(12), epc = 'E28011700000' + hex(12);
-        return { epc, tid, pc: '3000', user: '0'.repeat(128), reserved: '0'.repeat(16), base: rnd(-70, -40), thr: rnd(12, 27), angle: rnd(0, 360), ant: 1 + (i % 4), killed: false, flag: [0, 0, 0, 0], decay: [0, 0, 0, 0], locks: {} };
-      });
+      this.scene = scene ? Scenes.byId(scene) : null;
+      if (scene && !this.scene) throw new Error('未知的模拟场景：' + scene);
+      this.tags = this.scene ? Scenes.buildTags(this.scene) : this._randomTags(simTags);
       this.info = {
-        driver: 'SIM', host, model: '模拟读写器（非真实设备）', modelCode: 0, serial: 'SIM-' + hex(6), firmware: 'sim-2.0', region: 'FCC Part 15.247（模拟）', manufacturer: 'TagScope',
+        driver: 'SIM', host, model: this.scene ? `模拟读写器 · ${this.scene.title}` : '模拟读写器（非真实设备）', modelCode: 0, serial: 'SIM-' + hex(6), firmware: 'sim-2.0', region: 'FCC Part 15.247（模拟）', manufacturer: 'TagScope',
         antennaCount: 4, gpi: 4, gpo: 4, impinjExtensions: true,
         txPower: Array.from({ length: 81 }, (_, i) => 10 + i * 0.25), txPowerMin: 10, txPowerMax: 30,
         rxSensitivity: [-80, -75, -70, -65, -60, -55, -50, -45, -40].map((d, i) => ({ index: i + 1, dbm: d })),
@@ -32,6 +32,13 @@
         supportsAccess: true, supportsDoppler: true, supportsGpi: true, supportsBlockWrite: true, antennas: [1, 2, 3, 4].map(id => ({ id, connected: true })),
       };
       return this.info;
+    }
+    _randomTags(simTags) {
+      const n = Math.max(1, Math.min(2000, +simTags || 40));
+      return Array.from({ length: n }, (_, i) => {
+        const tid = pickChip() + '2000' + hex(12), epc = 'E28011700000' + hex(12);
+        return { epc, tid, pc: '3000', user: '0'.repeat(128), reserved: '0'.repeat(16), base: rnd(-70, -40), thr: rnd(12, 27), angle: rnd(0, 360), ant: 1 + (i % 4), killed: false, removed: false, flag: [0, 0, 0, 0], decay: [0, 0, 0, 0], locks: {} };
+      });
     }
     _selected(t, filters) {
       if (!filters || !filters.length) return true;
@@ -51,8 +58,51 @@
       const ants = (cfg.antennas || []).filter(a => a.enabled);
       if (!ants.length) throw new Error('请至少启用一个天线');
       clearInterval(this.timer); this.running = true;
+      if (this.scene) this._sceneReset();
       if (cfg.gpi && cfg.gpi.start) { this.armed = false; this.emit('log', 'info', `已就绪，等待 GPI ${cfg.gpi.start.port} ${cfg.gpi.start.level === 'high' ? '高' : '低'}电平启动`); return; }
       this._arm(cfg);
+    }
+    // ---- Scene timeline (built-in scenarios) ----
+    _sceneReset() {
+      clearInterval(this.sceneTimer); this.sceneTimer = null;
+      this.sceneT0 = Date.now(); this.sceneIdx = 0; this.antOff = new Set();
+      for (const a of this.info.antennas || []) a.connected = true;
+      this.tags = Scenes.buildTags(this.scene);
+      // Mutate the live selection map so the running read loop sees the rebuilt tags.
+      if (this.cfg && this._sel) { this._sel.clear(); for (const t of this.tags) this._sel.set(t, this._selected(t, this.cfg.filters)); }
+      if (this.running) this.sceneTimer = setInterval(() => this._sceneTick(), 100);
+    }
+    _sceneTick() {
+      const s = this.scene; if (!s || !this.running) return;
+      const el = (Date.now() - this.sceneT0) / 1000;
+      if (el > s.duration) {
+        if (!s.loop) { clearInterval(this.sceneTimer); this.sceneTimer = null; return; }
+        this._sceneReset(); return;
+      }
+      while (this.sceneIdx < s.events.length && s.events[this.sceneIdx].at <= el) this._sceneEvent(s.events[this.sceneIdx++]);
+    }
+    _sceneEvent(e) {
+      if (e.gpi) { this.setGpi(e.gpi.port, e.gpi.state === 'high'); return; }
+      if (e.antenna != null) {
+        const port = +e.antenna;
+        if (e.connected) this.antOff.delete(port); else this.antOff.add(port);
+        const a = (this.info.antennas || []).find(x => x.id === port);
+        if (a) a.connected = !!e.connected;
+        this.emit('log', e.connected ? 'info' : 'warn', `场景事件：天线 ${port} ${e.connected ? '已恢复' : '已断开'}`);
+        return;
+      }
+      if (e.remove) {
+        const t = this.tags.find(x => x.epc === String(e.remove).toUpperCase());
+        if (t) { t.removed = true; this.emit('log', 'info', `场景事件：标签 ${t.epc} 已移出`); }
+        return;
+      }
+      if (e.add) {
+        for (const t of Scenes.buildTags({ tags: e.add })) {
+          this.tags.push(t);
+          if (this._sel) this._sel.set(t, this._selected(t, this.cfg ? this.cfg.filters : []));
+          this.emit('log', 'info', `场景事件：标签 ${t.epc} 已加入`);
+        }
+      }
     }
     _arm(cfg) {
       const ants = cfg.antennas.filter(a => a.enabled);
@@ -60,19 +110,30 @@
       const rate = { 0: 1100, 1: 800, 2: 450, 3: 300, 4: 600, 1000: 700, 1002: 650, 1003: 750, 1004: 400 }[+cfg.mode] || 600;
       const S = +cfg.session || 0, mode = +cfg.searchMode || 2;
       const sel = new Map(this.tags.map(t => [t, this._selected(t, cfg.filters)]));
+      this._sel = sel;
       this.timer = setInterval(() => {
         const now = Date.now();
+        const el = this.scene ? (now - this.sceneT0) / 1000 : 0;
         const n = Math.round(rate / 20 * rnd(0.7, 1.3));
         for (let i = 0; i < n; i++) {
           const a = ants[Math.floor(Math.random() * ants.length)], t = this.tags[Math.floor(Math.random() * this.tags.length)];
-          if (t.killed || !sel.get(t)) continue;
-          if (+a.txDbm < t.thr - (t.ant === a.id ? 0 : -4)) continue; // tag not energised
-          // session flags: S1 decays in 0.5–5 s, S2/S3 persist while simulator runs
-          if (t.flag[S] === 1 && S === 1 && now > t.decay[S]) t.flag[S] = 0;
-          if (mode === 5) { t.flag[S] = 0; continue; } // Single Target Reset: B → A, no reports
-          if (S > 0 && (mode === 1 || mode === 3) && t.flag[S] === 1) continue; // single target: B tags stay silent
-          if (S > 0 && (mode === 1 || mode === 3)) { t.flag[S] = 1; t.decay[S] = now + rnd(500, 5000); }
-          const rssi = t.base + (+a.txDbm - 30) * 0.9 - (t.ant === a.id ? 0 : rnd(4, 14)) + rnd(-2, 2);
+          if (t.killed || t.removed || !sel.get(t) || this.antOff.has(a.id)) continue;
+          let rssi;
+          if (this.scene) {
+            // Scene tags carry per-antenna RSSI; they only exist inside their enter/exit window.
+            if (!Scenes.visibleAt(t, el)) continue;
+            const base = t.antRssi[a.id];
+            if (base == null) continue;
+            rssi = base + (+a.txDbm - 30) * 0.9 + rnd(-t.jitter, t.jitter);
+          } else {
+            if (+a.txDbm < t.thr - (t.ant === a.id ? 0 : -4)) continue; // tag not energised
+            // session flags: S1 decays in 0.5–5 s, S2/S3 persist while simulator runs
+            if (t.flag[S] === 1 && S === 1 && now > t.decay[S]) t.flag[S] = 0;
+            if (mode === 5) { t.flag[S] = 0; continue; } // Single Target Reset: B → A, no reports
+            if (S > 0 && (mode === 1 || mode === 3) && t.flag[S] === 1) continue; // single target: B tags stay silent
+            if (S > 0 && (mode === 1 || mode === 3)) { t.flag[S] = 1; t.decay[S] = now + rnd(500, 5000); }
+            rssi = t.base + (+a.txDbm - 30) * 0.9 - (t.ant === a.id ? 0 : rnd(4, 14)) + rnd(-2, 2);
+          }
           if (rssi < (a.rxDbm === '' || a.rxDbm == null ? -80 : +a.rxDbm)) continue;
           t.angle = (t.angle + rnd(-6, 6) + 360) % 360;
           const ch = 1 + Math.floor(Math.random() * 50);
@@ -82,7 +143,7 @@
       }, 50);
     }
     _disarm() { clearInterval(this.timer); if (this.armed) { this.armed = false; this.emit('rospec', 'end'); } }
-    stop() { this.running = false; this._disarm(); for (const t of this.tags || []) { t.flag[1] = 0; } }
+    stop() { this.running = false; this._disarm(); clearInterval(this.sceneTimer); this.sceneTimer = null; this.antOff = new Set(); for (const t of this.tags || []) { t.flag[1] = 0; } }
     setGpi(port, level) {
       this.gpiState[port] = level; this.emit('gpi', { port, level });
       const g = this.running && this.cfg && this.cfg.gpi; if (!g) return;
@@ -114,7 +175,7 @@
     async accessOp(r) {
       this._up();
       const tEpc = clean(r.targetEpc), tTid = clean(r.targetTid);
-      const t = this.tags.find(x => !x.killed && (tTid ? x.tid === tTid : tEpc ? x.epc === tEpc : true));
+      const t = this.tags.find(x => !x.killed && !x.removed && (tTid ? x.tid === tTid : tEpc ? x.epc === tEpc : true));
       await new Promise(res => setTimeout(res, 150 + Math.random() * 150));
       if (!t) return { ok: false, op: r.op, message: `超时（${+r.timeout || 5}s 内未找到目标标签）` };
       const pwd = clean(r.password).padStart(8, '0').slice(-8), apwd = t.reserved.substr(8, 8);

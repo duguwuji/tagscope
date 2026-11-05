@@ -141,6 +141,7 @@ Click ⊕ next to **Data Sources (数据源)** and fill in:
 | Nickname (昵称, optional) | Display name in the UI; must be unique |
 | Data source interface (数据源接口) | Impinj LLRP interface / Impinj IoT Device Interface (R700 REST) / Simulated reader |
 | Simulated tag count (模拟标签数量) | Simulator only: number of simulated tags in the field |
+| Simulator scene (模拟场景) | Simulator only: a built-in scene injects tag arrivals and departures, per-antenna RSSI, GPI and antenna events on a timeline; the scene defines the tag population |
 | Bridge URL (桥接服务地址) | Online version with real readers only: default `http://localhost:8080`; enter another address if the bridge runs on a different computer |
 
 **Advanced options (高级选项)**

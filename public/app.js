@@ -90,7 +90,7 @@ function makeLocal() {
       case 'connect': { if (s) s.disconnect(); const sim = new TagScopeSim((ev, ...a) => {
           if (ev === 'tag') onTag(b.id, a[0]); else if (ev === 'log') handlers.log({ id: b.id, level: a[0], msg: a[1], ts: Date.now() });
           else if (ev === 'rospec') handlers.rospec({ id: b.id, ev: a[0], ts: Date.now() }); else if (ev === 'gpi') handlers.gpi({ id: b.id, ...a[0], ts: Date.now() }); });
-        await sleep(250); sim.connect({ simTags: b.simTags, host: 'browser-sim' }); me.sims.set(b.id, sim); handlers.log({ id: b.id, level: 'info', msg: `已连接：${sim.info.model}`, ts: Date.now() }); return st(b.id, sim); }
+        await sleep(250); sim.connect({ simTags: b.simTags, scene: b.scene, host: 'browser-sim' }); me.sims.set(b.id, sim); handlers.log({ id: b.id, level: 'info', msg: `已连接：${sim.info.model}`, ts: Date.now() }); return st(b.id, sim); }
       case 'disconnect': if (s) { s.stop(); flush(); me.batches.delete(b.id); me.sims.delete(b.id); } return st(b.id, null);
       case 'start': if (!s) throw new Error('数据源未连接'); me.receiver.begin(b.id, b.runId); me.batches.set(b.id, new TagScopeRunBuffer.RunBuffer(b.id, b.runId)); s.start(TagScopeValidation.inventory(b.cfg)); return st(b.id, s);
       case 'stop': { const after = me.receiver.seq(b.id); if (s) s.stop(); const batch = me.batches.get(b.id)?.flush(); if (batch) me.receiver.accept(batch); const result = { ...st(b.id, s), ...(me.batches.get(b.id)?.since(after) || {}) }; if (b.runId) me.receiver.finish(b.id, result); return result; }
@@ -188,7 +188,7 @@ async function toggleSource(s, on) {
 }
 function connArgs(s) {
   let host = s.host.trim(), port = s.port; const m = host.match(/^\[(.+)\]:(\d+)$/) || host.match(/^([^:\[\]]+):(\d+)$/); if (m) { host = m[1]; port = port || m[2]; } host = host.replace(/^\[|\]$/g, '');
-  return { id: s.id, driver: s.iface, host, port: +port || undefined, tls: s.tls, insecure: s.ins, user: s.cred ? s.user : undefined, pass: s.cred ? s.pass : undefined, simTags: s.simTags };
+  return { id: s.id, driver: s.iface, host, port: +port || undefined, tls: s.tls, insecure: s.ins, user: s.cred ? s.user : undefined, pass: s.cred ? s.pass : undefined, simTags: s.simTags, scene: s.iface === 'sim' ? (s.scene || '') : undefined };
 }
 async function connectSource(s) {
   const r = rt(s.id); if (r.connecting) return; r.connecting = true; r.err = ''; renderSources();
@@ -244,6 +244,16 @@ function daUI() {
 }
 ['#da-if', '#da-tls', '#da-cred'].forEach(s => $(s).addEventListener('change', daUI));
 $('#da-advT').onclick = () => { const p = $('#da-adv'); p.hidden = !p.hidden; $('#da-advT .car').textContent = p.hidden ? '▼' : '▲'; };
+/* ---------- simulator scenes ---------- */
+const SCENES = window.TagScopeScenes ? window.TagScopeScenes.SCENES : [];
+function daScene() {
+  const s = SCENES.find(x => x.id === $('#da-scene').value);
+  $('#da-simn').disabled = !!s;
+  const hint = $('#da-scenehint');
+  hint.hidden = !s; hint.textContent = s ? s.desc : '';
+}
+$('#da-scene').innerHTML = '<option value="">静态标签（随机）</option>' + SCENES.map(s => `<option value="${s.id}">${esc(s.title)}</option>`).join('');
+$('#da-scene').onchange = daScene;
 function openAdd(s) {
   if (s && run?.parts.includes(s.id)) return toast('请先停止盘点，再编辑数据源');
   editSrc = s || null;
@@ -251,6 +261,7 @@ function openAdd(s) {
   const v = s || { host: '', nick: '', iface: CLOUD ? 'sim' : 'llrp', port: '', tls: true, ins: true, cred: false, user: '', pass: '', simTags: 40 };
   $('#da-host').value = v.host; $('#da-nick').value = v.nick; $('#da-if').value = v.iface; $('#da-port').value = v.port || ''; $('#da-tls').checked = !!v.tls; $('#da-ins').checked = v.ins !== false;
   $('#da-cred').checked = !!v.cred; $('#da-user').value = v.user || ''; $('#da-pass').value = v.pass || ''; $('#da-simn').value = v.simTags || 40; $('#da-bridge').value = v.bridge || bridgeUrl;
+  $('#da-scene').value = v.scene || ''; daScene();
   $('#da-token').value = bridgeToken(CLOUD ? v.bridge || bridgeUrl : '');
   $('#da-herr').hidden = $('#da-nerr').hidden = true; $('#da-if').disabled = !!s;
   daUI(); show('dsadd'); setTimeout(() => $('#da-host').focus(), 0);
@@ -262,7 +273,7 @@ $('#da-ok').onclick = async () => {
   $('#da-herr').hidden = !!host || iface === 'sim'; $('#da-host').classList.toggle('inv', !host && iface !== 'sim');
   const dup = nick && sources.some(x => x !== editSrc && nameOf(x).toLowerCase() === nick.toLowerCase()); $('#da-nerr').hidden = !dup;
   if ((!host && iface !== 'sim') || dup) return;
-  const v = { host: host || 'simulator', nick: nick || (iface === 'sim' ? uniqueNick('模拟读写器') : ''), iface, port: $('#da-port').value, tls: $('#da-tls').checked, ins: $('#da-ins').checked, cred: $('#da-cred').checked, user: $('#da-user').value, pass: $('#da-pass').value, simTags: +$('#da-simn').value || 40 };
+  const v = { host: host || 'simulator', nick: nick || (iface === 'sim' ? uniqueNick('模拟读写器') : ''), iface, port: $('#da-port').value, tls: $('#da-tls').checked, ins: $('#da-ins').checked, cred: $('#da-cred').checked, user: $('#da-user').value, pass: $('#da-pass').value, simTags: +$('#da-simn').value || 40, scene: iface === 'sim' ? $('#da-scene').value : '' };
   if (CLOUD && iface !== 'sim') { v.bridge = normUrl($('#da-bridge').value) || 'http://localhost:8080'; bridgeUrl = v.bridge; store.set('bridge', bridgeUrl); }
   if (iface !== 'sim' && $('#da-token').value.trim()) setBridgeToken(CLOUD ? v.bridge : '', $('#da-token').value.trim());
   let s = editSrc;

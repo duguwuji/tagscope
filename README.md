@@ -4,8 +4,6 @@
 
 TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界面和工作流程参照 Impinj ItemTest 2.x。它可以连接真实读写器，也可以用模拟器演示。项目不依赖任何 npm 包，只需要 Node.js 18 或更高版本。
 
-当前版本：**2.0.2**（网页版与桥接服务）
-
 ## 在线网页版
 
 地址：**[https://tagscope.iotrfid.top](https://tagscope.iotrfid.top)**（部署在 Cloudflare Workers）
@@ -74,6 +72,7 @@ TagScope 是一个网页版的 RFID 读写器测试与标签观测工具，界�
 2.0 版按 ItemTest 2.14.1 的界面结构复刻：左侧为 展示 / 数据源 / 关注标签 / 设置，右侧主区随所选内容切换。
 
 - **数据源**：可同时添加多台读写器（LLRP、IoT/REST、模拟器），开关决定是否参与展示；悬停显示主机名/接口/型号/区域，右键“编辑数据源 / 设备信息”，不可达时显示“重试”。高级选项：端口、TLS、自签名证书、覆盖默认凭据。
+- **模拟场景**：模拟器内置传送带分拣、物流收货门、零售门店盘点、智能工具柜、人员通道 5 个场景，按时间轴注入标签进出场、按天线设定 RSSI、GPI 脉冲和天线掉线，用于复现高速漏读、方向判断、开关门盘点等常见情况；场景选择在数据源对话框的“模拟场景”中。
 - **数据源配置页**（点击数据源名称）：预设（default 只读，修改后另存为新预设；当前预设加粗）及 刷新能力 / 导入 / 导出 / 复制 / 重置 / 删除；手动设置（天线、RF 模式、搜索模式 Single/Dual Target/TagFocus/Single Target Reset/Dual Target B→A、Fast ID、预估标签数量、Session、相位角/多普勒）；功率与灵敏度（全局、最大灵敏度、单独设置天线）；GPI 配置（启动/停止端口与电平）；Gen2 过滤（最多 5 个 Select 过滤器，掩码/位长度/偏移/存储区/匹配与不匹配动作）；低占空比。诊断页：GPO 控制、模拟 GPI 输入（模拟器）、设备信息。
 - **盘点展示**：▶/■、秒表、齿轮设置页。列表视图列与 ItemTest 一致（#、EPC、TID、XPC、读取次数、最后读取自、首次/最后读取、距上次读取、读写器时间、标签型号信息（由 TID 解析）、RSSI 最近/平均/最大/最小、天线、功率、相位角、多普勒、频率、PC、CR Handle）；右键列标题选择列、拖动列标题排序列、点击排序；行背景随未读时间逐渐变灰；右键标签：标签存储访问、修改 EPC、EPC/TID/其他列 十六进制 ↔ Base64。表格视图：数据源 × 关注标签文件 + Strays，可行列互换、显示汇总。
 - **运行场景**：连续、定时（启动延迟/开启/关闭时间/蜂鸣/次数）、余量测试（起始/结束功率与步进，功率列记录首次读到时的功率）、GPI 触发（可在 GPI 启动时重置秒表）。附加功能：唯一标签曲线、手动十六进制格式、运行前将标签重置为 A 状态（Single Target Reset，首次或每次运行前）、读取速率窗口。
@@ -101,6 +100,7 @@ public/index.html      网页界面
 public/i18n.js         界面语言（中文 / 英文）
 public/app.js          界面逻辑：后端、数据源、预设
 public/views.js        界面逻辑：各展示页、标签存储、日志、导航
+public/scenes.js       模拟器内置场景定义（浏览器与桥接服务共用）
 public/sim.js          模拟读写器核心（浏览器与桥接服务共用）
 public/tagdb.js        TID → 标签型号
 docs/user-guide-zh.md  中文用户手册
@@ -115,7 +115,7 @@ scripts/bump-version.js 版本号递增（本地手动 / CI 自动）
 .github/workflows/     GitHub Actions：CI（Node 18/20/22 上运行 npm test）与 PR 版本号递增
 ```
 
-版本号以 `package.json` 为唯一来源：`server.js` 与 `worker.js` 读取后注入页面的 `tagscope-version` meta，前端不再硬编码版本。每个 Pull Request 会自动把补丁版本号 +1、同步更新本文件与用户手册顶部的版本声明，并提交回 PR 分支；需要 minor / major 发布时在 PR 中手动改 `package.json`，工作流不会再动它。
+版本号以 `package.json` 为唯一来源：`server.js` 与 `worker.js` 读取后注入页面的 `tagscope-version` meta，前端不再硬编码版本。每个 Pull Request 会自动把补丁版本号 +1、同步更新本文件结尾与用户手册顶部的版本声明，并提交回 PR 分支；需要 minor / major 发布时在 PR 中手动改 `package.json`，工作流不会再动它。
 
 ## 版权
 
@@ -134,3 +134,7 @@ Impinj、ItemTest、Speedway、xArray 是 Impinj, Inc. 的商标。TagScope 是�
 - 停止失败会显示“停止未确认”，保留运行状态并允许再次停止；标签写入超时后可能显示“结果未知”，请读回核验。
 - 每轮使用独立运行编号与批次序号。停止时补齐末批，缺失无法补齐时明确标记结果不完整；日志达到缓存上限时会提示截断。
 - `npm test` 在内存中验证故障恢复、HTTP/SSE 访问保护、浏览器请求逻辑及模拟 LLRP 读写流程，不连接真实读写器。实机兼容性仍需按目标固件验收。
+
+---
+
+当前版本：**2.0.2**（网页版与桥接服务）

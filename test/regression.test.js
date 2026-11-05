@@ -307,6 +307,51 @@ test('REST filters map both match and miss actions to include/exclude', () => {
   assert.equal(action('nothing', 'unselect'), 'include');
   assert.equal(d.buildPreset({ ...base, filters: [{ mask: 'E280', bank: 'epc', pointer: 32, bits: 16, match: 'nothing', miss: 'nothing' }] }).antennaConfigs[0].filtering, undefined);
 });
+test('built-in simulator scenes are well formed', () => {
+  const S = require('../public/scenes');
+  assert(S.SCENES.length >= 5);
+  const ids = new Set();
+  for (const sc of S.SCENES) {
+    assert(sc.id && !ids.has(sc.id), 'scene ids must be unique'); ids.add(sc.id);
+    assert(sc.title && sc.desc && sc.duration > 0);
+    assert(Array.isArray(sc.tags) && sc.tags.length > 0);
+    assert(Array.isArray(sc.events));
+    for (let i = 1; i < sc.events.length; i++) assert(sc.events[i].at >= sc.events[i - 1].at, `${sc.id} events must be ordered`);
+    for (const t of sc.tags) assert(t.epc || t.epcPattern);
+  }
+  assert.equal(S.byId('conveyor').id, 'conveyor');
+  assert.equal(S.byId('nope'), null);
+});
+test('scene tags expand to the right EPCs and presence windows', () => {
+  const S = require('../public/scenes');
+  assert.equal(S.epcFor('3074257BF7194E4C{seq:08d}', 25), '3074257BF7194E4C00000025');
+  const tags = S.buildTags({ tags: [{ epcPattern: 'AA{seq:04d}', count: 3, enterAt: 2, exitAt: 2.8, stagger: 1.5, antennas: { 1: -52 } }] });
+  assert.deepEqual(tags.map(t => t.epc), ['AA0001', 'AA0002', 'AA0003']);
+  assert.equal(tags[1].enterAt, 3.5); assert.equal(tags[1].exitAt, 4.3);
+  assert(S.visibleAt(tags[1], 3.6)); assert(!S.visibleAt(tags[1], 2.0));
+  tags[1].removed = true; assert(!S.visibleAt(tags[1], 3.6));
+});
+test('simulator builds the selected scene and rejects unknown scenes', () => {
+  const Sim = require('../public/sim');
+  const sim = new Sim();
+  const info = sim.connect({ scene: 'dock_door' });
+  assert.match(info.model, /物流收货门/);
+  assert.equal(sim.tags.length, 4 + 40 + 1);
+  assert(sim.tags.some(t => t.epc === '300833B2DDD9014000000001' && t.reserved.startsWith('12345678')));
+  assert.throws(() => new Sim().connect({ scene: 'nope' }), /未知的模拟场景/);
+});
+test('scene events disconnect antennas, remove and add tags', () => {
+  const Sim = require('../public/sim');
+  const sim = new Sim(); sim.connect({ scene: 'smart_cabinet' }); sim.cfg = { filters: [] };
+  sim._sceneEvent({ antenna: 3, connected: false });
+  assert(sim.antOff.has(3)); assert.equal(sim.info.antennas.find(a => a.id === 3).connected, false);
+  sim._sceneEvent({ antenna: 3, connected: true }); assert(!sim.antOff.has(3));
+  sim._sceneEvent({ remove: 'E28068940000501F0C110003' });
+  assert.equal(sim.tags.find(t => t.epc === 'E28068940000501F0C110003').removed, true);
+  const before = sim.tags.length;
+  sim._sceneEvent({ add: [{ epc: 'E28068940000501F0C99FFFF', antennas: { 3: -50 } }] });
+  assert.equal(sim.tags.length, before + 1);
+});
 test('simulator treats permaunlock as writable and lock as protected', async () => {
   const Sim = require('../public/sim'); const sim = new Sim(); sim.connect({ simTags: 1 });
   const t = sim.tags[0]; t.reserved = '00000000' + '12345678'; t.locks.user = 'permaunlock';

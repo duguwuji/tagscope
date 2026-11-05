@@ -4,8 +4,6 @@
 
 TagScope is a web-based RFID reader test and tag observation tool whose UI and workflow follow Impinj ItemTest 2.x. It works with real readers or with a built-in simulator for demos. The project has no npm dependencies and only needs Node.js 18 or later.
 
-Current version: **2.0.2** (web app and bridge)
-
 > The interface is available in English and Chinese: use the **English / 中文** link at the bottom of the sidebar (the default follows your browser language).
 
 ## Online web app
@@ -76,6 +74,7 @@ The Tag Memory page lists only data sources that support tag access; with a REST
 Version 2.0 follows the ItemTest 2.14.1 layout: the sidebar holds Displays / Data Sources / Tags of Interest / Settings, and the main area changes with the selection.
 
 - **Data sources**: add several readers at once (LLRP, IoT/REST, simulator); a switch decides whether each takes part. Hover shows hostname/interface/model/region; right-click for "Edit data source / Device info"; "Retry" when unreachable. Advanced options: port, TLS, self-signed certificates, override default credentials.
+- **Simulator scenes**: the simulator ships five scenes — conveyor sorting, dock door receiving, retail shelf count, smart tool cabinet and access gate — that inject tag arrivals and departures, per-antenna RSSI, GPI pulses and antenna dropouts on a timeline, to reproduce missed reads at speed, direction detection and door-triggered counts. Pick one under "Simulator scene" in the data source dialog.
 - **Data source configuration** (click a source name): presets (default is read-only and is saved as a new preset when changed; the current preset is bold) with Refresh capabilities / Import / Export / Copy / Reset / Delete; manual settings (antennas, RF mode, search mode Single/Dual Target/TagFocus/Single Target Reset/Dual Target B→A, Fast ID, estimated tag population, session, phase angle/Doppler); power and sensitivity (global, max sensitivity, per antenna); GPI configuration (start/stop ports and levels); Gen2 filters (up to 5 Select filters with mask/bit length/offset/memory bank/match and non-match actions); low duty cycle. Diagnostics tab: GPO control, simulated GPI input (simulator), device info.
 - **Inventory display**: ▶/■, stopwatch, gear for settings. List view columns match ItemTest (#, EPC, TID, XPC, read count, last read by, first/last read, since last read, reader time, tag model info (decoded from TID), RSSI last/avg/max/min, antenna, power, phase angle, Doppler, frequency, PC, CR Handle). Right-click a header to choose columns, drag headers to reorder, click to sort; rows fade to grey as time since last read grows. Right-click a tag: Tag memory access, Change EPC, EPC/TID/other columns hex ↔ Base64. Table view: data source × Tags of Interest file + Strays, with row/column swap and a summary.
 - **Run scenarios**: continuous, timed (start delay/on time/off time/beep/number of runs), margin test (start/end power and step; the power column records the power at first read), GPI trigger (optionally reset the stopwatch on GPI start). Extras: unique tag chart, manual hex format, reset tags to state A before running (Single Target Reset, before the first or every run), read rate window.
@@ -103,6 +102,7 @@ public/index.html      Web UI
 public/i18n.js         Interface language (Chinese / English)
 public/app.js          UI logic: backends, data sources, presets
 public/views.js        UI logic: displays, tag memory, logging, navigation
+public/scenes.js       Built-in simulator scenes (shared by browser and bridge)
 public/sim.js          Simulated reader core (shared by browser and bridge)
 public/tagdb.js        TID → tag model
 docs/user-guide-en.md  English user guide
@@ -117,7 +117,7 @@ scripts/bump-version.js Version bump (manual locally, automatic in CI)
 .github/workflows/     GitHub Actions: CI (npm test on Node 18/20/22) and the PR version bump
 ```
 
-`package.json` is the single version source: `server.js` and `worker.js` read it and inject the `tagscope-version` meta tag, so the frontend no longer hardcodes a version. Every pull request gets its patch version incremented, the version line at the top of this file and of the user guides updated, and the result committed back to the PR branch; for a minor or major release, edit `package.json` in the PR yourself and the workflow leaves it alone.
+`package.json` is the single version source: `server.js` and `worker.js` read it and inject the `tagscope-version` meta tag, so the frontend no longer hardcodes a version. Every pull request gets its patch version incremented, the version line at the end of this file and at the top of the user guides updated, and the result committed back to the PR branch; for a minor or major release, edit `package.json` in the PR yourself and the workflow leaves it alone.
 
 ## Copyright
 
@@ -136,3 +136,7 @@ Impinj, ItemTest, Speedway and xArray are trademarks of Impinj, Inc. TagScope is
 - A failed stop remains unconfirmed and can be retried. A timed-out tag write may have an unknown outcome: read back before retrying.
 - Each run has a unique ID and numbered batches. Stop replays trailing batches; unrecoverable gaps are marked incomplete. Log cache limits show a truncation warning.
 - `npm test` uses in-memory fault injection, HTTP/SSE routing, browser request logic and a simulated LLRP read/write flow. It does not connect to real readers; hardware and firmware compatibility still require acceptance testing.
+
+---
+
+Current version: **2.0.2** (web app and bridge)
