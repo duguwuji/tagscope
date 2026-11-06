@@ -137,4 +137,4 @@ Impinj、ItemTest、Speedway、xArray 是 Impinj, Inc. 的商标。TagScope 是�
 
 ---
 
-当前版本：**2.0.4**（网页版与桥接服务）
+当前版本：**2.0.5**（网页版与桥接服务）
