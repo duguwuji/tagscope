@@ -33,7 +33,13 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin "$BASE_REF"
           base=$(git show "origin/$BASE_REF:package.json" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => console.log(JSON.parse(s).version))')
-          node scripts/bump-version.js --base "$base"
+          # Execute the base branch's script. The PR checkout must not be able to
+          # replace the program that runs with contents:write.
+          git show "origin/$BASE_REF:scripts/bump-version.js" > scripts/.bump-version-base.js
+          node scripts/.bump-version-base.js --base "$base"
+          status=$?
+          rm -f scripts/.bump-version-base.js
+          exit $status
       - name: Commit and push
         id: commit
         env:

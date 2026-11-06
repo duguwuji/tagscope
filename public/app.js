@@ -439,6 +439,7 @@ async function savePreset() {
   if ((draft.filters || []).some(f => f.match === f.miss)) return toast('过滤器的匹配与不匹配动作不能相同');
   if ((draft.filters || []).some(f => !clean(f.mask))) return toast('请填写过滤器掩码，或移除空过滤器');
   const nextScene = s.iface === 'sim' ? sceneDraft : '';
+  const prevScene = s.scene;
   const sceneChanged = nextScene !== (s.scene || '');
   const presetDirty = dirty;
   if (sceneChanged && run && run.parts.includes(s.id)) return toast('请先停止盘点，再修改模拟场景');
@@ -446,12 +447,14 @@ async function savePreset() {
   let name = viewP;
   if (viewP === 'default' && dirty) { name = await ask('保存为新预设', '预设名称:', uniqueP(s, 'copy_of_default'), validName(s)); if (!name) return; }
   if (name !== 'default') s.presets[name] = clone(draft);
-  s.active = name; s.scene = nextScene; viewP = name; saveSources(); dirty = false; sceneDirty = false;
+  s.active = name; s.scene = nextScene; viewP = name; saveSources(); dirty = false;
   let reconnected = false;
   if (sceneChanged && s.enabled && rt(s.id).connected) {
-    try { await disconnectSource(s); } catch (_) { }
+    try { await disconnectSource(s); }
+    catch (e) { s.scene = prevScene; saveSources(); toast('断开未确认，模拟场景未切换：' + e.message); return; }
     await connectSource(s); reconnected = !rt(s.id).err;
   }
+  sceneDirty = false;
   loadDraft();
   toast(sceneChanged && !presetDirty
     ? '模拟场景已保存' + (reconnected ? '，数据源已重新连接' : '')

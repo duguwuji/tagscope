@@ -26,15 +26,15 @@
       loop: true,
       tags: [
         { epcPattern: '3074257BF7194E4C{seq:08d}', count: 24, enterAt: 2, exitAt: 2.8, stagger: 1.5, antennas: { 1: -52, 2: -58 }, jitter: 3 },
-        { epc: '3074257BF7194E4C00000025', enterAt: 38, exitAt: 38.8, antennas: { 1: -83, 2: -86 }, jitter: 2 },
+        { epc: '3074257BF7194E4C00000025', enterAt: 38, exitAt: 38.8, antennas: { 1: -78, 2: -82 }, jitter: 3 },
         { epcPattern: '3074257BF7194E4C{seq:08d}', seqStart: 26, count: 6, enterAt: 39.5, exitAt: 40.3, stagger: 1.5, antennas: { 1: -52, 2: -58 }, jitter: 3 },
       ],
-      events: pulses(2, 2, 1.5, 0.3, 30),
+      events: pulses(2, 2, 1.5, 0.3, 31),
     },
     {
       id: 'dock_door',
       title: '物流收货门',
-      desc: '叉车带 40 箱货穿过收货门，GPI1 进门拉高、出门拉低；门框 4 个参考标签常驻；40 s 天线 3 掉线、50 s 恢复。用于验证 GPI 触发盘点与天线故障。',
+      desc: '叉车带 40 箱货穿过收货门，GPI1 进门拉高、出门拉低；门框 4 个参考标签常驻；货还在门内时天线 3 于 16 s 掉线、22 s 恢复。用于验证 GPI 触发盘点与天线故障。',
       duration: 60,
       loop: true,
       tags: [
@@ -45,8 +45,8 @@
       events: sortEvents([
         { at: 9, gpi: { port: 1, state: 'high' } },
         { at: 26, gpi: { port: 1, state: 'low' } },
-        { at: 40, antenna: 3, connected: false },
-        { at: 50, antenna: 3, connected: true },
+        { at: 16, antenna: 3, connected: false },
+        { at: 22, antenna: 3, connected: true },
       ]),
     },
     {
@@ -132,7 +132,7 @@
           epc, seq,
           tid: spec.tid ? String(spec.tid).toUpperCase() : CHIPS[seq % CHIPS.length] + '2000' + hex(12),
           pc: '3000',
-          user: spec.user ? String(spec.user).toUpperCase() : '0'.repeat(128),
+          user: spec.user ? String(spec.user).toUpperCase().padEnd(128, '0').slice(0, 128) : '0'.repeat(128),
           // Reserved bank: kill password words first (zeroed), then the access password words.
           reserved: '00000000' + (spec.accessPassword ? String(spec.accessPassword).toUpperCase() : '00000000'),
           antRssi: spec.antennas || {},

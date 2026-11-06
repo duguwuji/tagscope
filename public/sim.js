@@ -67,19 +67,27 @@
       clearInterval(this.sceneTimer); this.sceneTimer = null;
       this.sceneT0 = Date.now(); this.sceneIdx = 0; this.antOff = new Set();
       for (const a of this.info.antennas || []) a.connected = true;
+      // A loop starts from idle. Drop GPI lines left high by a stalled tick, without replaying the timeline.
+      const drop = [];
+      for (const e of (this.scene && this.scene.events) || []) if (e.gpi && this.gpiState[e.gpi.port]) drop.push(+e.gpi.port);
       this.tags = Scenes.buildTags(this.scene);
       // Mutate the live selection map so the running read loop sees the rebuilt tags.
       if (this.cfg && this._sel) { this._sel.clear(); for (const t of this.tags) this._sel.set(t, this._selected(t, this.cfg.filters)); }
+      // While a read is armed, deliver a real low edge so a GPI stop can disarm.
+      // On a fresh start, only clear the stale level — a low must not satisfy a start-on-low trigger.
+      for (const p of new Set(drop)) { if (this.armed) this.setGpi(p, false); else this.gpiState[p] = false; }
       if (this.running) this.sceneTimer = setInterval(() => this._sceneTick(), 100);
     }
     _sceneTick() {
       const s = this.scene; if (!s || !this.running) return;
       const el = (Date.now() - this.sceneT0) / 1000;
-      if (el > s.duration) {
-        if (!s.loop) { clearInterval(this.sceneTimer); this.sceneTimer = null; return; }
-        this._sceneReset(); return;
-      }
-      while (this.sceneIdx < s.events.length && s.events[this.sceneIdx].at <= el) this._sceneEvent(s.events[this.sceneIdx++]);
+      // Play events that belong to this pass before ending it, so a late timer
+      // cannot skip the tail (a GPI low, an antenna reconnect) and then loop.
+      const until = el > s.duration ? s.duration : el;
+      while (this.sceneIdx < s.events.length && s.events[this.sceneIdx].at <= until) this._sceneEvent(s.events[this.sceneIdx++]);
+      if (el <= s.duration) return;
+      if (!s.loop) { clearInterval(this.sceneTimer); this.sceneTimer = null; return; }
+      this._sceneReset();
     }
     _sceneEvent(e) {
       if (e.gpi) { this.setGpi(e.gpi.port, e.gpi.state === 'high'); return; }
@@ -97,10 +105,21 @@
         return;
       }
       if (e.add) {
-        for (const t of Scenes.buildTags({ tags: e.add })) {
-          this.tags.push(t);
-          if (this._sel) this._sel.set(t, this._selected(t, this.cfg ? this.cfg.filters : []));
-          this.emit('log', 'info', `场景事件：标签 ${t.epc} 已加入`);
+        for (const spec of e.add) {
+          for (const t of Scenes.buildTags({ tags: [spec] })) {
+            // Returning a removed EPC keeps its TID and memory. A new EPC is a new tag.
+            const prev = !spec.tid && this.tags.find(x => x.epc === t.epc && x.removed);
+            if (prev) {
+              prev.removed = false; prev.killed = false; prev.antRssi = t.antRssi; prev.jitter = t.jitter;
+              prev.enterAt = t.enterAt; prev.exitAt = t.exitAt; prev.static = t.static;
+              if (this._sel) this._sel.set(prev, this._selected(prev, this.cfg ? this.cfg.filters : []));
+              this.emit('log', 'info', `场景事件：标签 ${t.epc} 已归还`);
+            } else {
+              this.tags.push(t);
+              if (this._sel) this._sel.set(t, this._selected(t, this.cfg ? this.cfg.filters : []));
+              this.emit('log', 'info', `场景事件：标签 ${t.epc} 已加入`);
+            }
+          }
         }
       }
     }
@@ -129,12 +148,13 @@
             if (+a.txDbm < t.thr - (t.ant === a.id ? 0 : -4)) continue; // tag not energised
             rssi = t.base + (+a.txDbm - 30) * 0.9 - (t.ant === a.id ? 0 : rnd(4, 14)) + rnd(-2, 2);
           }
-          // Session flags apply to scene tags too: S1 decays in 0.5–5 s, S2/S3 persist while the simulator runs
+          // S1 decays on its timer even if this sample is too weak. S2/S3 persist while the simulator runs.
+          // A/B changes only after the read clears sensitivity, so a miss cannot hide the tag.
           if (t.flag[S] === 1 && S === 1 && now > t.decay[S]) t.flag[S] = 0;
-          if (mode === 5) { t.flag[S] = 0; continue; } // Single Target Reset: B → A, no reports
-          if (S > 0 && (mode === 1 || mode === 3) && t.flag[S] === 1) continue; // single target: B tags stay silent
-          if (S > 0 && (mode === 1 || mode === 3)) { t.flag[S] = 1; t.decay[S] = now + rnd(500, 5000); }
           if (rssi < (a.rxDbm === '' || a.rxDbm == null ? -80 : +a.rxDbm)) continue;
+          if (mode === 5) t.flag[S] = 0; // Single Target Reset: report the read and return the tag to A
+          else if (mode === 6) { if (S > 0 && t.flag[S] !== 1) continue; t.flag[S] = 0; } // B → A only
+          else if (S > 0 && (mode === 1 || mode === 3)) { if (t.flag[S] === 1) continue; t.flag[S] = 1; t.decay[S] = now + rnd(500, 5000); }
           t.angle = (t.angle + rnd(-6, 6) + 360) % 360;
           const ch = 1 + Math.floor(Math.random() * 50);
           this.emit('tag', { epc: t.epc, tid: cfg.fastId ? t.tid : undefined, antenna: a.id, rssi: Math.round(rssi * 2) / 2, phase: cfg.phase === false ? undefined : +t.angle.toFixed(1),

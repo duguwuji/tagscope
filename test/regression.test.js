@@ -307,6 +307,23 @@ test('REST filters map both match and miss actions to include/exclude', () => {
   assert.equal(action('nothing', 'unselect'), 'include');
   assert.equal(d.buildPreset({ ...base, filters: [{ mask: 'E280', bank: 'epc', pointer: 32, bits: 16, match: 'nothing', miss: 'nothing' }] }).antennaConfigs[0].filtering, undefined);
 });
+test('REST select/unselect chain matches LLRP: only the last filter remains', () => {
+  const d = new RestDriver();
+  const filtering = f => d.buildPreset({ ...cfg, filters: f }).antennaConfigs[0].filtering;
+  const chain = filtering([
+    { mask: 'AA', bank: 'epc', pointer: 32, bits: 8, match: 'select', miss: 'unselect' },
+    { mask: 'BB', bank: 'epc', pointer: 32, bits: 8, match: 'select', miss: 'unselect' },
+  ]);
+  assert.equal(chain.filters.length, 1);
+  assert.equal(chain.filters[0].mask, 'BB');
+  assert.equal(chain.filterLink, undefined);
+  const union = filtering([
+    { mask: 'AA', bank: 'epc', pointer: 32, bits: 8, match: 'select', miss: 'nothing' },
+    { mask: 'BB', bank: 'epc', pointer: 32, bits: 8, match: 'select', miss: 'nothing' },
+  ]);
+  assert.equal(union.filterLink, 'union');
+  assert.deepEqual(union.filters.map(f => f.mask), ['AA', 'BB']);
+});
 test('built-in simulator scenes are well formed', () => {
   const S = require('../public/scenes');
   assert(S.SCENES.length >= 5);
@@ -352,6 +369,112 @@ test('scene events disconnect antennas, remove and add tags', () => {
   const before = sim.tags.length;
   sim._sceneEvent({ add: [{ epc: 'E28068940000501F0C99FFFF', antennas: { 3: -50 } }] });
   assert.equal(sim.tags.length, before + 1);
+  const epc = 'E28068940000501F0C120007';
+  const tid = sim.tags.find(t => t.epc === epc).tid;
+  sim._sceneEvent({ remove: epc });
+  sim._sceneEvent({ add: [{ epc, antennas: { 2: -46 } }] });
+  const alive = sim.tags.filter(t => t.epc === epc && !t.removed);
+  assert.equal(alive.length, 1);
+  assert.equal(alive[0].tid, tid);
+});
+test('scene timelines keep the weak tag, the photoeye and the antenna fault observable', () => {
+  const S = require('../public/scenes');
+  const conveyor = S.byId('conveyor');
+  const weak = S.buildTags(conveyor).find(t => t.epc.endsWith('00000025'));
+  assert(weak.antRssi[1] + weak.jitter > -80 && weak.antRssi[1] - weak.jitter < -80, 'damaged tag must be intermittent at 30 dBm');
+  const highs = new Set(conveyor.events.filter(e => e.gpi && e.gpi.state === 'high').map(e => e.at));
+  for (const t of S.buildTags(conveyor)) assert(highs.has(t.enterAt), `${t.epc} at ${t.enterAt} has no GPI pulse`);
+  const dock = S.byId('dock_door');
+  const off = dock.events.find(e => e.antenna === 3 && e.connected === false);
+  const on = dock.events.find(e => e.antenna === 3 && e.connected === true);
+  assert(S.buildTags(dock).some(t => t.antRssi[3] != null && t.enterAt <= off.at && t.exitAt >= on.at));
+});
+test('a late scene tick still plays the tail, and a loop drops a stuck GPI', () => {
+  const Sim = require('../public/sim');
+  const shelf = new Sim(); shelf.connect({ scene: 'retail_shelf' }); shelf.running = true;
+  shelf.sceneT0 = Date.now() - 100000; shelf.sceneIdx = 0; shelf._sceneTick();
+  assert(shelf.tags.filter(t => t.removed).length >= 5);
+  assert.equal(shelf.sceneTimer, null);
+  const door = new Sim(); door.connect({ scene: 'dock_door' }); door.running = true;
+  door.gpiState[1] = true; door.sceneIdx = door.scene.events.length; door.sceneT0 = Date.now() - 70000;
+  door._sceneTick();
+  assert.equal(door.gpiState[1], false);
+  door.stop();
+});
+test('default USER read succeeds for the dock door access tag', async () => {
+  const Sim = require('../public/sim'); const sim = new Sim(); sim.connect({ scene: 'dock_door' });
+  const r = await sim.accessOp({ op: 'read', targetEpc: '300833B2DDD9014000000001', bank: 'user', wordPointer: 0, wordCount: 8, password: '00000000', timeout: 1 });
+  assert.equal(r.ok, true, r.message);
+  assert.equal(r.data.length, 32);
+  assert(r.data.startsWith('CAFEBABE00000000'));
+});
+test('a weak sample does not move a single-target tag into B', async () => {
+  const Sim = require('../public/sim');
+  const reports = [];
+  const sim = new Sim((ev, p) => { if (ev === 'tag') reports.push(p); });
+  sim.connect({ simTags: 1 });
+  const t = sim.tags[0]; t.ant = 1; t.thr = 0; t.base = -90; t.flag = [0, 0, 0, 0];
+  sim.start({ antennas: [{ id: 1, enabled: true, txDbm: 30, rxDbm: -80 }], mode: 0, session: 2, searchMode: 1, filters: [] });
+  try {
+    await delay(300);
+    assert.equal(t.flag[2], 0);
+    assert.equal(reports.length, 0);
+    t.base = -50;
+    await delay(300);
+    assert(reports.length > 0);
+    assert.equal(t.flag[2], 1);
+    const n = reports.length;
+    await delay(200);
+    assert.equal(reports.length, n);
+  } finally { sim.stop(); }
+});
+test('search mode 5 reports the tag and returns it to A; mode 6 only reads B', async () => {
+  const Sim = require('../public/sim');
+  const run = async (searchMode, flag) => {
+    const reports = [];
+    const sim = new Sim((ev, p) => { if (ev === 'tag') reports.push(p); });
+    sim.connect({ simTags: 1 });
+    const t = sim.tags[0]; t.ant = 1; t.thr = 0; t.base = -50; t.flag = [0, 0, flag, 0];
+    sim.start({ antennas: [{ id: 1, enabled: true, txDbm: 30, rxDbm: -80 }], mode: 0, session: 2, searchMode, filters: [] });
+    return { sim, t, reports };
+  };
+  const reset = await run(5, 1);
+  try {
+    await delay(300);
+    assert(reset.reports.length > 0);
+    assert.equal(reset.t.flag[2], 0);
+  } finally { reset.sim.stop(); }
+  const btoa = await run(6, 0);
+  try {
+    await delay(250);
+    assert.equal(btoa.reports.length, 0);
+    btoa.t.flag[2] = 1;
+    await delay(250);
+    assert(btoa.reports.length > 0);
+    assert.equal(btoa.t.flag[2], 0);
+    const n = btoa.reports.length;
+    await delay(200);
+    assert.equal(btoa.reports.length, n);
+  } finally { btoa.sim.stop(); }
+});
+test('saving a scene rolls back when disconnect fails', async () => {
+  const s = { id: 's', iface: 'sim', scene: 'dock_door', enabled: true, presets: {}, active: 'default' };
+  const notes = [];
+  let connects = 0;
+  const c = vm.createContext({
+    srcById: () => s, cfgSrc: 's', readCfgForm() {}, antList: () => [1], validateGpi: () => true,
+    draft: { ants: '1', filters: [] }, clean: x => String(x || ''), sceneDraft: 'conveyor', dirty: false, sceneDirty: true, viewP: 'default', run: null,
+    TagScopeValidation: { preset: d => d }, defaultPreset: () => ({}), infoOf: () => ({}), clone: o => o, saveSources() {},
+    rt: () => ({ connected: true, err: '' }), disconnectSource: async () => { throw Error('stop lost'); },
+    connectSource: async () => { connects++; }, loadDraft() { notes.push('load'); }, toast: m => notes.push(m),
+  });
+  vm.runInContext(cut(app, 'async function savePreset()', 'const uniqueP'), c);
+  await c.savePreset();
+  assert.equal(s.scene, 'dock_door');
+  assert.equal(connects, 0);
+  assert.equal(c.sceneDirty, true);
+  assert(notes.some(m => /未切换/.test(m)));
+  assert(!notes.includes('load'));
 });
 test('simulator treats permaunlock as writable and lock as protected', async () => {
   const Sim = require('../public/sim'); const sim = new Sim(); sim.connect({ simTags: 1 });
