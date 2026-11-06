@@ -1,6 +1,6 @@
 # TagScope User Guide
 
-Version: TagScope 2.0.4 (web app and bridge)  
+Version: TagScope 2.0.5 (web app and bridge)  
 Author: Hill · <Hill@iotrfid.top>  
 Online: <https://tagscope.iotrfid.top>  
 Source code: <https://github.com/duguwuji/tagscope>  

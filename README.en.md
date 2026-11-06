@@ -139,4 +139,4 @@ Impinj, ItemTest, Speedway and xArray are trademarks of Impinj, Inc. TagScope is
 
 ---
 
-Current version: **2.0.4** (web app and bridge)
+Current version: **2.0.5** (web app and bridge)
